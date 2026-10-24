@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bons de travail ETA</title>
+<meta name="theme-color" content="#1E5A38">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fond:#E7ECE6; --surface:#FFFFFF; --encre:#16231B; --doux:#56655B;
+  --vert:#1E5A38; --sur-vert:#FFFFFF; --vert-pale:#D3E4D8;
+  --ambre:#F0A92B; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C3CEC5;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --fond:#0E1611; --surface:#17231B; --encre:#E6EEE8; --doux:#9DAFA2;
+    --vert:#73C394; --sur-vert:#0B1A11; --vert-pale:#1F3427;
+    --ambre:#F0A92B; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#2B3B30;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fond);color:var(--encre);
+  font:18px/1.45 'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+button{font:inherit;cursor:pointer}
+
+.barre{position:sticky;top:0;z-index:5;background:var(--vert);color:var(--sur-vert);
+  padding:calc(12px + env(safe-area-inset-top,0px)) 18px 12px;
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.barre .qui{font-weight:700;font-size:21px}
+.barre .jour{font-size:15px;opacity:.9;text-align:right}
+
+main{max-width:640px;margin:0 auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px))}
+h1{font-size:26px;line-height:1.2;margin:4px 0 16px}
+h2{font-size:19px;margin:28px 0 10px;color:var(--doux)}
+ul{list-style:none;margin:0;padding:0}
+
+.principal{display:block;width:100%;min-height:58px;border:0;border-radius:10px;
+  background:var(--vert);color:var(--sur-vert);font-weight:700;font-size:19px;padding:12px 16px}
+.principal:disabled{opacity:.6}
+.secondaire{min-height:48px;border:2px solid var(--vert);background:transparent;color:var(--vert);
+  border-radius:10px;padding:8px 14px;font-weight:700}
+.retour{background:none;border:0;color:var(--vert);font-weight:700;padding:8px 0;min-height:44px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid var(--ambre);outline-offset:1px}
+
+/* Missions : la date fait office d'étiquette, la bordure gauche signale l'urgence */
+.mission{display:grid;grid-template-columns:112px 1fr;width:100%;text-align:left;color:inherit;
+  background:var(--surface);border:1px solid var(--trait);border-left:8px solid var(--trait);
+  border-radius:8px;padding:0;margin-bottom:10px;min-height:76px}
+.mission.jour{border-left-color:var(--ambre)}
+.mission.retard{border-left-color:var(--rouge)}
+.quand{padding:12px 10px;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--trait)}
+.quand b{font-size:16px;line-height:1.2}
+.quand small{color:var(--doux);font-size:14px}
+.quoi{padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.quoi .detail{color:var(--doux)}
+.quoi .consigne{font-size:15px;background:var(--vert-pale);padding:4px 8px;border-radius:6px;margin-top:6px}
+#liste-bons li{display:flex;gap:14px;padding:10px 2px;border-bottom:1px solid var(--trait);font-size:16px}
+.num{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+li.vide{color:var(--doux);font-size:16px;padding:8px 2px;border:0}
+.alerte{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;margin-bottom:16px}
+.alerte p{margin:0 0 10px;font-weight:700}
+
+/* Formulaire */
+label{display:block;font-weight:700;margin:0 0 16px}
+input,select,textarea{display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;color:var(--encre);
+  background:var(--surface);border:2px solid var(--trait);border-radius:8px;min-height:52px;padding:10px 12px}
+textarea{min-height:96px;resize:vertical}
+fieldset{margin:0 0 20px;padding:6px 14px 14px;background:var(--surface);border:1px solid var(--trait);border-radius:10px}
+legend{font-weight:700;font-size:19px;padding:0 6px}
+#bloc-sarl{border:3px solid var(--ambre)}
+#bloc-sarl label{margin-top:8px}
+.ligne,.intrant{display:grid;gap:8px;padding:12px 0;border-bottom:1px dashed var(--trait)}
+.ligne select,.ligne input,.intrant input,.intrant select{margin-top:0}
+.qte{display:flex;align-items:center;gap:10px}
+.qte input{flex:1}
+.l-unite{min-width:44px;font-weight:700}
+.paire{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.retirer{justify-self:start;background:none;border:0;color:var(--rouge);padding:6px 0;text-decoration:underline;font-size:16px}
+fieldset .secondaire{margin-top:12px}
+.rappel{background:var(--vert-pale);border-radius:10px;padding:12px 14px;margin-bottom:18px}
+.erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;font-weight:700;margin:0 0 12px}
+.note{font-weight:400;color:var(--rouge);font-size:16px}
+.pied{position:sticky;bottom:0;background:var(--fond);padding:12px 0 calc(12px + env(safe-area-inset-bottom,0px));
+  border-top:1px solid var(--trait)}
+
+/* Confirmation */
+.ok{text-align:center;padding-top:36px}
+.coche{width:92px;height:92px;border-radius:50%;background:var(--vert);color:var(--sur-vert);
+  font-size:54px;line-height:92px;margin:0 auto 18px}
+.numero{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin:0 0 32px}
+.ok .secondaire{width:100%;margin-top:12px}
+@media (prefers-reduced-motion:no-preference){
+  .coche{animation:apparition .35s ease-out}
+  @keyframes apparition{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+}
+
+.chargement{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:var(--fond);font-size:20px;color:var(--doux);z-index:10}
+</style>
+</head>
+<body>
+<header class="barre">
+  <span class="qui" id="qui">Bons de travail</span>
+  <span class="jour" id="jour"></span>
+</header>
+
+<main>
+  <!-- Lien absent ou refusé -->
+  <section id="vue-lien" hidden>
+    <h1>Lien non valide</h1>
+    <p id="lien-texte">Ouvrez votre lien personnel, envoyé par le bureau. Après la première ouverture, l'application s'en souvient sur ce téléphone.</p>
+  </section>
+
+  <!-- Accueil : missions et derniers bons -->
+  <section id="vue-accueil" hidden>
+    <div class="alerte" id="alerte" hidden>
+      <p id="alerte-texte"></p>
+      <button type="button" class="secondaire" id="btn-reessayer">Réessayer</button>
+    </div>
+    <button type="button" class="principal" id="btn-nouveau">Nouveau bon sans mission</button>
+    <h2>Mes missions</h2>
+    <ul id="liste-missions"></ul>
+    <h2>Mes derniers bons</h2>
+    <ul id="liste-bons"></ul>
+  </section>
+
+  <!-- Saisie d'un bon -->
+  <section id="vue-bon" hidden>
+    <button type="button" class="retour" id="btn-retour">‹ Mes missions</button>
+    <h1 id="titre-bon">Nouveau bon</h1>
+    <div class="rappel" id="rappel" hidden></div>
+    <form id="form-bon" novalidate>
+      <label>Date de l'intervention
+        <input type="date" id="f-date">
+      </label>
+      <label>Client
+        <select id="f-client"></select>
+      </label>
+      <label>Parcelle ou lieu
+        <input type="text" id="f-lieu" maxlength="200" autocomplete="off">
+      </label>
+
+      <fieldset id="bloc-sarl" hidden>
+        <legend>SARL des Trois Étangs</legend>
+        <label>Parcelle (îlot PAC)
+          <select id="f-parcelle"></select>
+          <span class="note" id="parcelles-erreur" hidden></span>
+        </label>
+        <div id="intrants"></div>
+        <button type="button" class="secondaire" id="btn-intrant">Ajouter un intrant</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Travaux réalisés</legend>
+        <div id="lignes"></div>
+        <button type="button" class="secondaire" id="btn-ligne">Ajouter une prestation</button>
+      </fieldset>
+
+      <label>Heures de travail
+        <input type="text" inputmode="decimal" id="f-heures" autocomplete="off" placeholder="Facultatif">
+      </label>
+      <label>Remarques
+        <textarea id="f-remarques" rows="3" maxlength="1000" placeholder="Facultatif"></textarea>
+      </label>
+
+      <div class="pied">
+        <p class="erreur" id="erreur" role="alert" hidden></p>
+        <button type="submit" class="principal" id="btn-envoyer">Envoyer le bon</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Confirmation -->
+  <section id="vue-ok" class="ok" hidden>
+    <div class="coche" aria-hidden="true">✓</div>
+    <h1>Bon envoyé</h1>
+    <p class="numero" id="ok-numero"></p>
+    <button type="button" class="principal" id="btn-ok">Retour à mes missions</button>
+    <button type="button" class="secondaire" id="btn-ok-nouveau">Faire un autre bon</button>
+  </section>
+</main>
+
+<div class="chargement" id="chargement">Chargement…</div>
+
+<script>
+(function () {
+  // Adresse du moteur Apps Script (déploiement « Application Web », se termine par /exec)
+  var API = 'https://script.google.com/macros/s/AKfycbx7hxNNGt6Y9YPm_NSdtgphAE6llwKNhHKnHDfDQLRNHzvMb5G_5rb8lDkEApCSm1GR/exec';
+
+  // Jeton : pris dans le lien (?t=…) puis mémorisé sur le téléphone
+  var CLE = 'eta-bons-jeton';
+  var JETON = new URLSearchParams(location.search).get('t') || '';
+  try {
+    if (/^[0-9a-f]{16}$/.test(JETON)) localStorage.setItem(CLE, JETON);
+    else JETON = localStorage.getItem(CLE) || '';
+  } catch (e) { /* stockage indisponible : on garde le jeton du lien */ }
+
+  /** Appel au moteur : POST en texte simple (pas de requête préalable CORS, pas de cookie Google). */
+  function appel(action, donnees) {
+    var corps = { action: action, jeton: JETON };
+    for (var k in donnees) corps[k] = donnees[k];
+    return fetch(API, { method: 'POST', body: JSON.stringify(corps), credentials: 'omit', redirect: 'follow' })
+      .catch(function () { throw new Error('Pas de connexion au serveur. Vérifiez le réseau.'); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Serveur indisponible (code ' + r.status + ').');
+        return r.json().catch(function () { throw new Error('Réponse illisible du serveur.'); });
+      })
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.erreur || 'Erreur inconnue.');
+        return j.resultat;
+      });
+  }
+  var D = null, mission = null, idEnvoi = null, modifie = false, envoiEnCours = false;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  function nombre(s) {
+    s = String(s).replace(/\s/g, '').replace(',', '.');
+    var v = Number(s);
+    return s !== '' && isFinite(v) ? v : NaN;
+  }
+  function decaler(iso, n) {
+    var d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function dateCourte(iso) { return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : ''; }
+  function jourCourt(iso) {
+    var j = new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long' });
+    return j.charAt(0).toUpperCase() + j.slice(1);
+  }
+  function vue(nom) {
+    ['lien', 'accueil', 'bon', 'ok'].forEach(function (v) { $('vue-' + v).hidden = (v !== nom); });
+    window.scrollTo(0, 0);
+  }
+
+  // ------------------------------------------------------------ Chargement
+  function charger(silencieux) {
+    if (!JETON) { $('chargement').hidden = true; vue('lien'); return; }
+    if (!silencieux) $('chargement').hidden = false;
+    appel('charger', {})
+      .then(function (d) {
+        D = d;
+        $('chargement').hidden = true;
+        $('alerte').hidden = true;
+        afficherAccueil();
+        if (!silencieux) vue('accueil');
+      })
+      .catch(function (e) {
+        $('chargement').hidden = true;
+        if (silencieux) return;
+        if (/Lien non valide/.test(e.message)) {
+          try { localStorage.removeItem(CLE); } catch (x) {}
+          $('lien-texte').textContent = e.message;
+          vue('lien');
+          return;
+        }
+        $('alerte-texte').textContent = 'Chargement impossible : ' + e.message;
+        $('alerte').hidden = false;
+        $('btn-nouveau').hidden = !D;
+        vue('accueil');
+      });
+  }
+
+  function afficherAccueil() {
+    $('qui').textContent = D.chauffeur.nom;
+    $('btn-nouveau').hidden = false;
+    var demain = decaler(D.aujourdhui, 1);
+    var ul = $('liste-missions');
+    if (!D.missions.length) {
+      ul.innerHTML = '<li class="vide">Aucune mission planifiée. Pour un travail non prévu, utilisez « Nouveau bon sans mission ».</li>';
+    } else {
+      ul.innerHTML = D.missions.map(function (m, i) {
+        var etiquette, classe = '', precision = '';
+        if (!m.date) etiquette = 'Sans date';
+        else if (m.date < D.aujourdhui) { etiquette = 'En retard'; classe = 'retard'; precision = dateCourte(m.date); }
+        else if (m.date === D.aujourdhui) { etiquette = "Aujourd'hui"; classe = 'jour'; }
+        else if (m.date === demain) etiquette = 'Demain';
+        else { etiquette = jourCourt(m.date); precision = dateCourte(m.date); }
+        return '<li><button type="button" class="mission ' + classe + '" data-i="' + i + '">'
+          + '<span class="quand"><b>' + esc(etiquette) + '</b>' + (precision ? '<small>' + esc(precision) + '</small>' : '') + '</span>'
+          + '<span class="quoi"><b>' + esc(m.clientNom) + '</b>'
+          + '<span class="detail">' + esc(m.prestationLibelle) + (m.lieu ? ', ' + esc(m.lieu) : '') + '</span>'
+          + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
+          + '</span></button></li>';
+      }).join('');
+      Array.prototype.forEach.call(ul.querySelectorAll('.mission'), function (b) {
+        b.onclick = function () { ouvrirBon(D.missions[+b.getAttribute('data-i')]); };
+      });
+    }
+    $('liste-bons').innerHTML = D.bons.length
+      ? D.bons.map(function (b) {
+          return '<li><span class="num">' + esc(b.numero) + '</span><span>' + esc(dateCourte(b.date)) + ', ' + esc(b.clientNom) + '</span></li>';
+        }).join('')
+      : '<li class="vide">Aucun bon envoyé pour le moment.</li>';
+  }
+
+  // ------------------------------------------------------------ Saisie du bon
+  function ouvrirBon(m) {
+    mission = m || null;
+    idEnvoi = uuid();
+    modifie = false;
+    $('form-bon').reset();
+    $('titre-bon').textContent = m ? 'Bon de la mission' : 'Nouveau bon';
+    $('rappel').hidden = !m;
+    if (m) {
+      $('rappel').innerHTML = '<b>' + esc(m.clientNom) + '</b><br>' + esc(m.prestationLibelle)
+        + (m.lieu ? ', ' + esc(m.lieu) : '') + (m.consignes ? '<br>' + esc(m.consignes) : '');
+    }
+    $('f-date').value = D.aujourdhui;
+    $('f-date').max = D.aujourdhui;
+    $('f-client').innerHTML = '<option value="">Choisir le client</option>' + D.clients.map(function (c) {
+      return '<option value="' + esc(c.code) + '">' + esc(c.nom) + (c.commune ? ' (' + esc(c.commune) + ')' : '') + '</option>';
+    }).join('');
+    $('f-client').value = m ? m.client : '';
+    $('f-lieu').value = m ? m.lieu : '';
+    $('f-parcelle').innerHTML = '<option value="">Choisir la parcelle</option>' + D.parcelles.liste.map(function (p) {
+      return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>';
+    }).join('');
+    $('parcelles-erreur').textContent = D.parcelles.erreur || '';
+    $('parcelles-erreur').hidden = !D.parcelles.erreur;
+    $('lignes').innerHTML = '';
+    ajouterLigne(m ? m.prestation : '');
+    $('intrants').innerHTML = '';
+    majSarl();
+    $('erreur').hidden = true;
+    etatEnvoi(false);
+    vue('bon');
+  }
+
+  function ajouterLigne(code) {
+    var div = document.createElement('div');
+    div.className = 'ligne';
+    div.innerHTML = '<select class="l-presta" aria-label="Prestation"><option value="">Choisir la prestation</option>'
+      + D.prestations.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('')
+      + '</select>'
+      + '<div class="qte"><input class="l-qte" type="text" inputmode="decimal" autocomplete="off" placeholder="Quantité" aria-label="Quantité"><span class="l-unite"></span></div>'
+      + '<button type="button" class="retirer">Retirer cette prestation</button>';
+    var sel = div.querySelector('.l-presta');
+    sel.value = code || '';
+    function unite() {
+      var p = D.prestations.filter(function (x) { return x.code === sel.value; })[0];
+      div.querySelector('.l-unite').textContent = p ? p.unite : '';
+    }
+    sel.onchange = unite; unite();
+    div.querySelector('.retirer').onclick = function () { div.remove(); majLignes(); };
+    $('lignes').appendChild(div);
+    majLignes();
+  }
+  function majLignes() {
+    var ls = $('lignes').querySelectorAll('.ligne');
+    Array.prototype.forEach.call(ls, function (l) { l.querySelector('.retirer').hidden = ls.length === 1; });
+    $('btn-ligne').hidden = ls.length >= 10;
+  }
+
+  function ajouterIntrant() {
+    var div = document.createElement('div');
+    div.className = 'intrant';
+    div.innerHTML = '<input class="i-produit" type="text" maxlength="100" autocomplete="off" placeholder="Produit" aria-label="Produit">'
+      + '<div class="paire"><input class="i-dose" type="text" inputmode="decimal" autocomplete="off" placeholder="Dose" aria-label="Dose">'
+      + '<select class="i-unite" aria-label="Unité"><option value="">Unité</option>'
+      + D.unitesIntrant.map(function (u) { return '<option>' + esc(u) + '</option>'; }).join('')
+      + '</select></div>'
+      + '<button type="button" class="retirer">Retirer cet intrant</button>';
+    div.querySelector('.retirer').onclick = function () { div.remove(); majIntrants(); };
+    $('intrants').appendChild(div);
+    majIntrants();
+    div.querySelector('.i-produit').focus();
+  }
+  function majIntrants() {
+    $('btn-intrant').hidden = $('intrants').querySelectorAll('.intrant').length >= 5;
+  }
+
+  function estSarl() { return !!$('f-client').value && $('f-client').value === D.codeClientSarl; }
+  function majSarl() { $('bloc-sarl').hidden = !estSarl(); }
+
+  function collecter() {
+    var sarl = estSarl();
+    return {
+      idEnvoi: idEnvoi,
+      idMission: mission ? mission.id : '',
+      date: $('f-date').value,
+      client: $('f-client').value,
+      lieu: $('f-lieu').value.trim(),
+      parcelle: sarl ? $('f-parcelle').value : '',
+      lignes: Array.prototype.map.call($('lignes').querySelectorAll('.ligne'), function (l) {
+        return { code: l.querySelector('.l-presta').value, quantite: l.querySelector('.l-qte').value.trim() };
+      }),
+      intrants: !sarl ? [] : Array.prototype.map.call($('intrants').querySelectorAll('.intrant'), function (x) {
+        return { produit: x.querySelector('.i-produit').value.trim(), dose: x.querySelector('.i-dose').value.trim(), unite: x.querySelector('.i-unite').value };
+      }).filter(function (x) { return x.produit || x.dose || x.unite; }),
+      heures: $('f-heures').value.trim(),
+      remarques: $('f-remarques').value.trim()
+    };
+  }
+
+  function verifier(b) {
+    if (!b.date) return "Indiquez la date de l'intervention.";
+    if (b.date > D.aujourdhui) return "La date de l'intervention ne peut pas être dans le futur.";
+    if (!b.client) return 'Choisissez le client.';
+    if (estSarl() && !b.parcelle) return 'Choisissez la parcelle.';
+    for (var i = 0; i < b.lignes.length; i++) {
+      if (!b.lignes[i].code) return 'Prestation ' + (i + 1) + ' : choisissez la prestation.';
+      if (!(nombre(b.lignes[i].quantite) > 0)) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
+    }
+    for (var j = 0; j < b.intrants.length; j++) {
+      var x = b.intrants[j];
+      if (!x.produit) return 'Intrant ' + (j + 1) + ' : indiquez le produit.';
+      if (!(nombre(x.dose) > 0)) return 'Intrant ' + (j + 1) + ' : indiquez la dose.';
+      if (!x.unite) return 'Intrant ' + (j + 1) + " : choisissez l'unité.";
+    }
+    if (b.heures && !(nombre(b.heures) >= 0 && nombre(b.heures) <= 24)) return 'Heures de travail : indiquez un nombre entre 0 et 24.';
+    return '';
+  }
+
+  function montrerErreur(t) { $('erreur').textContent = t; $('erreur').hidden = false; }
+  function etatEnvoi(enCours) {
+    envoiEnCours = enCours;
+    $('btn-envoyer').disabled = enCours;
+    $('btn-envoyer').textContent = enCours ? 'Envoi en cours…' : 'Envoyer le bon';
+  }
+
+  function envoyer(ev) {
+    ev.preventDefault();
+    if (envoiEnCours) return;
+    var b = collecter();
+    var err = verifier(b);
+    if (err) { montrerErreur(err); return; }
+    $('erreur').hidden = true;
+    etatEnvoi(true);
+    appel('enregistrer', { bon: b })
+      .then(function (r) {
+        etatEnvoi(false);
+        modifie = false;
+        $('ok-numero').textContent = 'N° ' + r.numero;
+        vue('ok');
+        charger(true);
+      })
+      .catch(function (e) {
+        etatEnvoi(false);
+        montrerErreur('Bon non enregistré : ' + e.message
+          + ' Vous pouvez appuyer à nouveau sur « Envoyer le bon » : il ne sera jamais enregistré deux fois.');
+      });
+  }
+
+  // ------------------------------------------------------------ Événements
+  $('jour').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  $('btn-reessayer').onclick = function () { charger(false); };
+  $('btn-nouveau').onclick = function () { ouvrirBon(null); };
+  $('btn-ligne').onclick = function () { ajouterLigne(''); modifie = true; };
+  $('btn-intrant').onclick = function () { ajouterIntrant(); modifie = true; };
+  $('f-client').onchange = majSarl;
+  $('form-bon').addEventListener('input', function () { modifie = true; });
+  $('form-bon').addEventListener('submit', envoyer);
+  $('btn-retour').onclick = function () {
+    if (modifie && !confirm('Abandonner ce bon ? Les informations saisies seront perdues.')) return;
+    vue('accueil');
+  };
+  $('btn-ok').onclick = function () { vue('accueil'); };
+  $('btn-ok-nouveau').onclick = function () { ouvrirBon(null); };
+
+  charger(false);
+})();
+</script>
+</body>
+</html>

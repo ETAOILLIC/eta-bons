@@ -1,0 +1,22 @@
+{
+  "name": "Bons de travail ETA Oillic",
+  "short_name": "Bons ETA",
+  "lang": "fr",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#E7ECE6",
+  "theme_color": "#1E5A38",
+  "icons": [
+    {
+      "src": "icone-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icone-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
