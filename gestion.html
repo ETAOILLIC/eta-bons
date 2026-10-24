@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestion ETA</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1E5A38">
+<link rel="icon" href="icone-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fond:#E7ECE6; --surface:#FFFFFF; --surface-2:#F3F6F2; --encre:#16231B; --doux:#56655B;
+  --vert:#1E5A38; --sur-vert:#FFFFFF; --vert-pale:#D3E4D8;
+  --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C3CEC5;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --fond:#0E1611; --surface:#17231B; --surface-2:#132019; --encre:#E6EEE8; --doux:#9DAFA2;
+    --vert:#73C394; --sur-vert:#0B1A11; --vert-pale:#1F3427;
+    --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#2B3B30;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--fond);color:var(--encre);
+  font:15px/1.4 'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--ambre);outline-offset:1px}
+
+.barre{position:sticky;top:0;z-index:20;background:var(--vert);color:var(--sur-vert);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px}
+.barre h1{font-size:19px;margin:0 10px 0 0}
+.onglets{display:flex;gap:4px;flex-wrap:wrap}
+.onglets button{background:transparent;border:0;color:inherit;border-radius:8px;min-height:36px;padding:4px 12px;font-weight:700;opacity:.8}
+.onglets button[aria-selected="true"]{background:var(--sur-vert);color:var(--vert);opacity:1}
+.onglets .compte{display:inline-block;min-width:22px;padding:0 6px;margin-left:4px;border-radius:11px;background:var(--ambre);color:#2A1E05;font-size:12px;line-height:20px}
+.espace{flex:1}
+.etat{font-size:13px;opacity:.85}
+.barre .clair,.barre a.clair{background:transparent;border:1.5px solid currentColor;color:inherit;border-radius:8px;
+  min-height:36px;padding:4px 12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center}
+
+main{padding:14px 16px 60px;max-width:1500px;margin:0 auto}
+.outils{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:14px}
+.outils label{font-size:13px;font-weight:700}
+.outils input,.outils select{display:block;margin-top:3px;min-height:36px;border:1.5px solid var(--trait);border-radius:7px;background:var(--surface);padding:4px 8px}
+.outils .resume{color:var(--doux);margin-left:auto}
+.outils .ajout{background:var(--vert);color:var(--sur-vert);border:0;border-radius:8px;min-height:36px;padding:4px 14px;font-weight:700}
+.case-inline{display:flex;align-items:center;gap:6px;font-weight:400!important}
+.alerte{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-weight:700}
+.vide{color:var(--doux);padding:30px;text-align:center;background:var(--surface);border-radius:10px}
+
+/* Bloc client à facturer */
+.client{background:var(--surface);border:1px solid var(--trait);border-radius:12px;margin-bottom:18px;overflow:hidden}
+.client-tete{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 16px;background:var(--surface-2);border-bottom:1px solid var(--trait)}
+.client-tete h2{margin:0;font-size:22px}
+.code{font-family:ui-monospace,Consolas,monospace;font-weight:700;background:var(--vert-pale);border:0;border-radius:6px;padding:2px 8px;font-size:15px}
+.client-tete .periode{color:var(--doux)}
+.corps{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:0}
+.totaux{padding:14px 16px;border-right:1px solid var(--trait);background:var(--ambre-pale)}
+.totaux h3,.bons h3{margin:0 0 8px;font-size:14px;color:var(--doux);font-weight:700}
+.totaux table{width:100%;border-collapse:collapse}
+.totaux td{padding:6px 4px;border-bottom:1px solid var(--trait);vertical-align:baseline}
+.totaux .art{font-family:ui-monospace,Consolas,monospace;font-weight:700;font-size:14px}
+.totaux .qte{text-align:right;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.totaux .qte button{background:none;border:0;padding:0 2px;font:inherit;color:inherit;cursor:copy;border-bottom:2px dotted var(--doux)}
+.totaux .u{padding-left:6px;font-weight:700;color:var(--doux)}
+.bons{padding:14px 16px;overflow-x:auto}
+table.liste{width:100%;border-collapse:collapse;font-size:14px}
+table.liste th,table.liste td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--trait);vertical-align:top}
+table.liste th{font-size:12px;color:var(--doux);background:var(--surface-2)}
+table.liste tr.decoche td{opacity:.45}
+table.liste .num{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+table.liste .nb{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{display:inline-block;padding:0 7px;border-radius:10px;font-size:11px;font-weight:700;background:var(--ambre);color:#2A1E05;margin-left:4px}
+.lien-btn{background:none;border:0;color:var(--vert);font-weight:700;text-decoration:underline;padding:0 4px}
+.pied-client{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--trait);background:var(--surface-2)}
+.pied-client input{min-height:38px;border:1.5px solid var(--trait);border-radius:7px;padding:4px 8px;background:var(--surface);width:200px}
+.principal{background:var(--vert);color:var(--sur-vert);border:0;border-radius:8px;min-height:40px;padding:6px 18px;font-weight:700}
+.principal:disabled{opacity:.5}
+.pastille{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;font-weight:700;background:var(--vert-pale)}
+.pastille.annule{background:var(--rouge-pale);color:var(--rouge)}
+.inactif td{color:var(--doux)}
+tr.cliquable{cursor:pointer}
+tr.cliquable:hover td{background:var(--surface-2)}
+.lien-ch{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all;color:var(--doux)}
+.actions-ch{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.petit{background:transparent;border:1.5px solid var(--trait);border-radius:7px;min-height:30px;padding:2px 10px;font-size:13px;text-decoration:none;color:inherit;display:inline-flex;align-items:center}
+@media (max-width:900px){ .corps{grid-template-columns:1fr} .totaux{border-right:0;border-bottom:1px solid var(--trait)} }
+
+/* Fenêtres */
+dialog{border:0;border-radius:12px;padding:0;width:min(720px,96vw);max-height:92vh;background:var(--surface);color:var(--encre);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,20,14,.45)}
+.fen{padding:18px 20px}
+.fen h3{margin:0 0 2px;font-size:20px}
+.fen .sous{margin:0 0 14px;color:var(--doux);font-size:13px}
+.champs{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.champs .large{grid-column:1/-1}
+.fen label{display:block;font-weight:700;font-size:13px}
+.fen label input,.fen label select,.fen label textarea,.ligne-ed input,.ligne-ed select{display:block;width:100%;margin-top:4px;font-weight:400;font-size:15px;
+  background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px}
+.fen textarea{min-height:56px;resize:vertical}
+.groupe{grid-column:1/-1;border:1px solid var(--trait);border-radius:9px;padding:8px 12px 12px}
+.groupe.sarl{border:2px solid var(--ambre)}
+.groupe h4{margin:2px 0 6px;font-size:14px}
+.ligne-ed{display:grid;grid-template-columns:1fr 130px 50px 70px;gap:8px;align-items:center;margin-bottom:6px}
+.ligne-ed.intr{grid-template-columns:1fr 110px 120px 70px}
+.ligne-ed input,.ligne-ed select{margin-top:0}
+.ligne-ed .u{font-weight:700}
+.retirer{background:none;border:0;color:var(--rouge);text-decoration:underline;font-size:13px}
+.histo{grid-column:1/-1;font-size:13px;color:var(--doux);background:var(--surface-2);border-radius:8px;padding:8px 10px}
+.histo ul{margin:4px 0 0;padding-left:18px}
+.boutons{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.secondaire{background:transparent;border:1.5px solid var(--trait);border-radius:8px;min-height:40px;padding:6px 14px}
+.danger{background:transparent;border:0;color:var(--rouge);text-decoration:underline;padding:6px 4px}
+.erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:7px;padding:8px 10px;font-weight:700;margin:12px 0 0}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--encre);color:var(--fond);
+  padding:10px 16px;border-radius:8px;font-weight:700;z-index:50;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.toast.erreur-t{background:var(--rouge);color:#fff}
+.chargement{padding:60px 0;text-align:center;color:var(--doux);font-size:18px}
+.vide-lien{max-width:540px;margin:60px auto;background:var(--surface);border-radius:12px;padding:24px}
+</style>
+</head>
+<body>
+<header class="barre">
+  <h1>Gestion ETA</h1>
+  <nav class="onglets" role="tablist">
+    <button type="button" role="tab" data-onglet="afacturer" aria-selected="true">À facturer<span class="compte" id="compte">0</span></button>
+    <button type="button" role="tab" data-onglet="factures">Facturés</button>
+    <button type="button" role="tab" data-onglet="client">Clients</button>
+    <button type="button" role="tab" data-onglet="prestation">Prestations</button>
+    <button type="button" role="tab" data-onglet="chauffeur">Chauffeurs</button>
+  </nav>
+  <span class="espace"></span>
+  <span class="etat" id="etat"></span>
+  <button type="button" class="clair" id="actualiser">Actualiser</button>
+  <a class="clair" href="bureau.html">Planning</a>
+</header>
+
+<main>
+  <section class="vide-lien" id="vue-lien" hidden>
+    <h2 style="margin-top:0">Lien du bureau non valide</h2>
+    <p id="lien-texte">Ouvrez le lien de l'écran bureau (Google Sheet, menu ETA → « Lien de l'écran bureau ») : il donne accès au planning et à la gestion, et reste mémorisé sur cet ordinateur.</p>
+  </section>
+  <div class="alerte" id="alerte" hidden></div>
+  <div class="chargement" id="chargement">Chargement…</div>
+
+  <section id="vue-afacturer" hidden>
+    <div class="outils">
+      <label>Client<select id="filtre-client"></select></label>
+      <label>Interventions jusqu'au<input type="date" id="filtre-date"></label>
+      <span class="resume" id="resume"></span>
+    </div>
+    <div id="liste-clients"></div>
+  </section>
+
+  <section id="vue-factures" hidden>
+    <div class="outils">
+      <label>Rechercher<input type="search" id="filtre-histo" placeholder="client, n° de bon, n° de pièce…"></label>
+      <span class="resume">Les 400 derniers bons facturés ou annulés</span>
+    </div>
+    <div class="client"><div class="bons"><table class="liste">
+      <thead><tr><th>N° bon</th><th>Date</th><th>Client</th><th>Chauffeur</th><th>Prestations</th><th>Statut</th><th>Pièce EBP</th><th>Facturé le</th><th></th></tr></thead>
+      <tbody id="histo"></tbody>
+    </table></div></div>
+  </section>
+
+  <section id="vue-ref" hidden>
+    <div class="outils">
+      <label>Rechercher<input type="search" id="filtre-ref"></label>
+      <label class="case-inline"><input type="checkbox" id="voir-inactifs"> Afficher les inactifs</label>
+      <span class="espace"></span>
+      <button type="button" class="ajout" id="ajouter">+ Ajouter</button>
+    </div>
+    <div class="client"><div class="bons"><table class="liste">
+      <thead id="ref-tete"></thead><tbody id="ref-corps"></tbody>
+    </table></div></div>
+  </section>
+</main>
+
+<!-- Correction d'un bon -->
+<dialog id="dlg-bon">
+  <form class="fen" id="form-bon" method="dialog" novalidate>
+    <h3 id="b-titre">Bon</h3>
+    <p class="sous" id="b-sous"></p>
+    <div class="champs">
+      <label>Date de l'intervention<input type="date" id="b-date"></label>
+      <label>Client<select id="b-client"></select></label>
+      <label class="large">Parcelle ou lieu<input type="text" id="b-lieu" maxlength="200"></label>
+      <div class="groupe sarl" id="b-sarl" hidden>
+        <h4>SARL des Trois Étangs</h4>
+        <label>Parcelle (îlot PAC)<select id="b-parcelle"></select></label>
+        <div id="b-intrants" style="margin-top:10px"></div>
+        <button type="button" class="lien-btn" id="b-ajout-intrant">+ Ajouter un intrant</button>
+      </div>
+      <div class="groupe">
+        <h4>Travaux réalisés</h4>
+        <div id="b-lignes"></div>
+        <button type="button" class="lien-btn" id="b-ajout-ligne">+ Ajouter une prestation</button>
+      </div>
+      <label>Heures de travail<input type="text" inputmode="decimal" id="b-heures"></label>
+      <label class="large">Remarques<textarea id="b-remarques" maxlength="1000"></textarea></label>
+      <div class="histo" id="b-histo" hidden></div>
+    </div>
+    <p class="erreur" id="b-erreur" role="alert" hidden></p>
+    <div class="boutons">
+      <button type="button" class="danger" id="b-annuler">Annuler ce bon</button>
+      <span class="espace"></span>
+      <button type="button" class="secondaire" id="b-fermer">Fermer</button>
+      <button type="submit" class="principal" id="b-enregistrer">Enregistrer la correction</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Fiche client / prestation / chauffeur -->
+<dialog id="dlg-fiche">
+  <form class="fen" id="form-fiche" method="dialog" novalidate>
+    <h3 id="f-titre">Fiche</h3>
+    <p class="sous" id="f-sous"></p>
+    <div class="champs" id="f-champs"></div>
+    <p class="erreur" id="f-erreur" role="alert" hidden></p>
+    <div class="boutons">
+      <span class="espace"></span>
+      <button type="button" class="secondaire" id="f-fermer">Fermer</button>
+      <button type="submit" class="principal" id="f-enregistrer">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+  // Adresse du moteur Apps Script (même déploiement que les autres pages)
+  var API = 'https://script.google.com/macros/s/AKfycbx7hxNNGt6Y9YPm_NSdtgphAE6llwKNhHKnHDfDQLRNHzvMb5G_5rb8lDkEApCSm1GR/exec';
+  var CLE = 'eta-bureau-jeton';
+  var JETON = new URLSearchParams(location.search).get('b') || '';
+  try {
+    if (/^[0-9a-f]{32}$/.test(JETON)) localStorage.setItem(CLE, JETON);
+    else JETON = localStorage.getItem(CLE) || '';
+  } catch (e) {}
+
+  var D = null, onglet = 'afacturer', decoches = {}, bonOuvert = null, ficheOuverte = null, occupe = 0;
+
+  var FICHES = {
+    client: { titre: 'Clients', un: 'client', champs: [
+      { cle: 'code', nom: 'Code EBP', code: true }, { cle: 'nom', nom: 'Nom', requis: true, large: true },
+      { cle: 'adresse', nom: 'Adresse', large: true }, { cle: 'codePostal', nom: 'Code postal' }, { cle: 'commune', nom: 'Commune' },
+      { cle: 'actif', nom: 'Actif (proposé aux chauffeurs et au planning)', caseACocher: true }],
+      colonnes: [['code', 'Code EBP'], ['nom', 'Nom'], ['commune', 'Commune'], ['actif', 'Actif']] },
+    prestation: { titre: 'Prestations', un: 'prestation', champs: [
+      { cle: 'code', nom: 'Code article EBP', code: true }, { cle: 'unite', nom: 'Unité (ha, h, m³, t, u…)', requis: true },
+      { cle: 'libelle', nom: 'Libellé', requis: true, large: true },
+      { cle: 'actif', nom: 'Active (proposée aux chauffeurs et au planning)', caseACocher: true }],
+      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['actif', 'Active']] },
+    chauffeur: { titre: 'Chauffeurs', un: 'chauffeur', champs: [
+      { cle: 'code', nom: 'Code', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
+      { cle: 'telephone', nom: 'Téléphone portable' },
+      { cle: 'actif', nom: 'Actif (son lien fonctionne et il apparaît au planning)', caseACocher: true }],
+      colonnes: [['code', 'Code'], ['nom', 'Nom'], ['telephone', 'Téléphone'], ['lien', 'Lien personnel'], ['actif', 'Actif']] }
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function court(iso) { return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(2, 4) : ''; }
+  function horodate(s) { return s ? court(s.slice(0, 10)) + ' ' + s.slice(11, 16) : ''; }
+  function nb(n) { return Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 }); }
+  function nombre(s) { s = String(s).replace(/\s/g, '').replace(',', '.'); var v = Number(s); return s !== '' && isFinite(v) ? v : NaN; }
+  function resume(l) { return l.map(function (x) { return esc(x.libelle) + ' <b>' + nb(x.quantite) + '</b> ' + esc(x.unite); }).join('<br>'); }
+
+  function appel(action, donnees) {
+    var corps = { action: action, jetonBureau: JETON };
+    for (var k in donnees) corps[k] = donnees[k];
+    return fetch(API, { method: 'POST', body: JSON.stringify(corps), credentials: 'omit', redirect: 'follow' })
+      .catch(function () { throw new Error('Pas de connexion au serveur. Vérifiez le réseau.'); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Serveur indisponible (code ' + r.status + ').');
+        return r.json().catch(function () { throw new Error('Réponse illisible du serveur.'); });
+      })
+      .then(function (j) { if (!j.ok) throw new Error(j.erreur || 'Erreur inconnue.'); return j.resultat; });
+  }
+  var mt = null;
+  function toast(t, err) {
+    var x = $('toast'); x.textContent = t; x.className = 'toast' + (err ? ' erreur-t' : ''); x.hidden = false;
+    clearTimeout(mt); mt = setTimeout(function () { x.hidden = true; }, err ? 7000 : 3000);
+  }
+  function etat(t) { $('etat').textContent = t || ''; }
+  function copier(texte, quoi) {
+    (navigator.clipboard ? navigator.clipboard.writeText(texte) : Promise.reject())
+      .then(function () { toast((quoi || texte) + ' copié'); }, function () { toast('Copie impossible : sélectionnez le texte.', true); });
+  }
+
+  // ------------------------------------------------------------ Chargement et onglets
+  function charger(silencieux) {
+    if (!JETON) { $('chargement').hidden = true; $('vue-lien').hidden = false; return Promise.resolve(); }
+    if (!silencieux) $('chargement').hidden = false;
+    etat('Mise à jour…'); occupe++;
+    return appel('gestionCharger', {})
+      .then(function (d) {
+        occupe--; D = d; $('chargement').hidden = true; $('alerte').hidden = true;
+        etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+        afficher();
+      })
+      .catch(function (e) {
+        occupe--; $('chargement').hidden = true; etat('');
+        if (/Lien du bureau non valide/.test(e.message)) {
+          try { localStorage.removeItem(CLE); } catch (x) {}
+          $('lien-texte').textContent = e.message; $('vue-lien').hidden = false; return;
+        }
+        $('alerte').textContent = 'Mise à jour impossible : ' + e.message; $('alerte').hidden = false;
+      });
+  }
+
+  function afficher() {
+    if (!D) return;
+    $('compte').textContent = D.aFacturer.length;
+    Array.prototype.forEach.call(document.querySelectorAll('.onglets button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-onglet') === onglet ? 'true' : 'false');
+    });
+    $('vue-afacturer').hidden = onglet !== 'afacturer';
+    $('vue-factures').hidden = onglet !== 'factures';
+    $('vue-ref').hidden = !FICHES[onglet];
+    if (onglet === 'afacturer') dessinerAFacturer();
+    else if (onglet === 'factures') dessinerHistorique();
+    else dessinerReferentiel();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.onglets button'), function (b) {
+    b.onclick = function () { onglet = b.getAttribute('data-onglet'); afficher(); };
+  });
+
+  // ------------------------------------------------------------ À facturer
+  function bonsFiltres() {
+    var c = $('filtre-client').value, d = $('filtre-date').value;
+    return D.aFacturer.filter(function (b) { return (!c || b.client === c) && (!d || b.date <= d); });
+  }
+
+  function dessinerAFacturer() {
+    var choix = $('filtre-client').value;
+    var clients = {};
+    D.aFacturer.forEach(function (b) { clients[b.client] = b.clientNom; });
+    var codes = Object.keys(clients).sort(function (a, b) { return clients[a].localeCompare(clients[b], 'fr'); });
+    $('filtre-client').innerHTML = '<option value="">Tous les clients (' + codes.length + ')</option>'
+      + codes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(clients[c]) + '</option>'; }).join('');
+    $('filtre-client').value = clients[choix] ? choix : '';
+
+    var bons = bonsFiltres();
+    var parClient = {};
+    bons.forEach(function (b) { (parClient[b.client] = parClient[b.client] || []).push(b); });
+    var liste = Object.keys(parClient).sort(function (a, b) { return clients[a].localeCompare(clients[b], 'fr'); });
+    $('resume').textContent = bons.length + ' bon' + (bons.length > 1 ? 's' : '') + ' à facturer, ' + liste.length + ' client' + (liste.length > 1 ? 's' : '');
+    if (!liste.length) { $('liste-clients').innerHTML = '<div class="vide">Aucun bon à facturer' + (bons.length !== D.aFacturer.length ? ' avec ces filtres' : '') + '.</div>'; return; }
+    $('liste-clients').innerHTML = liste.map(function (c) { return blocClient(c, parClient[c].sort(function (a, b) { return a.date.localeCompare(b.date) || a.numero.localeCompare(b.numero); })); }).join('');
+  }
+
+  function totaux(bons) {
+    var t = {}, ordre = [];
+    bons.forEach(function (b) {
+      if (decoches[b.numero]) return;
+      b.lignes.forEach(function (l) {
+        var k = l.code + '|' + l.unite;
+        if (!t[k]) { t[k] = { code: l.code, libelle: l.libelle, unite: l.unite, quantite: 0 }; ordre.push(k); }
+        t[k].quantite = Math.round((t[k].quantite + l.quantite) * 1000) / 1000;
+      });
+    });
+    return ordre.map(function (k) { return t[k]; }).sort(function (a, b) { return a.libelle.localeCompare(b.libelle, 'fr'); });
+  }
+
+  function blocClient(code, bons) {
+    var coches = bons.filter(function (b) { return !decoches[b.numero]; });
+    var tot = totaux(bons);
+    var dates = bons.map(function (b) { return b.date; }).sort();
+    return '<section class="client" data-client="' + esc(code) + '">'
+      + '<div class="client-tete"><h2>' + esc(bons[0].clientNom) + '</h2>'
+      + '<button type="button" class="code" data-copier="' + esc(code) + '" title="Copier le code client">' + esc(code) + '</button>'
+      + '<span class="periode">' + bons.length + ' bon' + (bons.length > 1 ? 's' : '') + ', du ' + court(dates[0]) + ' au ' + court(dates[dates.length - 1]) + '</span></div>'
+      + '<div class="corps"><div class="totaux"><h3>À saisir dans EBP' + (coches.length < bons.length ? ' (' + coches.length + ' bon' + (coches.length > 1 ? 's' : '') + ' cochés)' : '') + '</h3>'
+      + (tot.length ? '<table>' + tot.map(function (x) {
+          return '<tr><td><span class="art">' + esc(x.code) + '</span><br>' + esc(x.libelle) + '</td>'
+            + '<td class="qte"><button type="button" data-copier="' + esc(nb(x.quantite)) + '" title="Cliquer pour copier">' + esc(nb(x.quantite)) + '</button></td>'
+            + '<td class="u">' + esc(x.unite) + '</td></tr>';
+        }).join('') + '</table>' : '<p>Aucun bon coché.</p>')
+      + '</div><div class="bons"><h3>Détail des bons</h3><table class="liste"><thead><tr><th><input type="checkbox" data-tout="' + esc(code) + '"'
+      + (coches.length === bons.length ? ' checked' : '') + ' aria-label="Tout cocher"></th><th>N° bon</th><th>Date</th><th>Chauffeur</th><th>Lieu / parcelle</th><th>Prestations</th><th class="nb">Heures</th><th>Remarques</th><th></th></tr></thead><tbody>'
+      + bons.map(function (b) {
+          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : ''].filter(Boolean).join(', ');
+          var intr = b.intrants.length ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
+          return '<tr' + (decoches[b.numero] ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (decoches[b.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
+            + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + '</td>'
+            + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td><td>' + esc(lieu) + '</td>'
+            + '<td>' + resume(b.lignes) + intr + '</td><td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td>'
+            + '<td>' + esc(b.remarques) + '</td><td><button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button></td></tr>';
+        }).join('') + '</tbody></table></div></div>'
+      + '<div class="pied-client"><label>N° de pièce EBP (BL ou facture) <input type="text" data-piece="' + esc(code) + '" maxlength="40" placeholder="facultatif"></label>'
+      + '<button type="button" class="principal" data-facturer="' + esc(code) + '"' + (coches.length ? '' : ' disabled') + '>Marquer facturé' + (coches.length ? ' (' + coches.length + ' bon' + (coches.length > 1 ? 's' : '') + ')' : '') + '</button></div>'
+      + '</section>';
+  }
+
+  $('filtre-client').onchange = dessinerAFacturer;
+  $('filtre-date').onchange = dessinerAFacturer;
+
+  $('liste-clients').addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.getAttribute('data-copier') !== null) { copier(t.getAttribute('data-copier')); return; }
+    if (t.getAttribute('data-corriger')) { ouvrirBon(t.getAttribute('data-corriger')); return; }
+    if (t.getAttribute('data-facturer')) { facturer(t.getAttribute('data-facturer'), t); }
+  });
+  $('liste-clients').addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.getAttribute('data-bon')) { if (t.checked) delete decoches[t.getAttribute('data-bon')]; else decoches[t.getAttribute('data-bon')] = true; }
+    if (t.getAttribute('data-tout')) {
+      var c = t.getAttribute('data-tout');
+      D.aFacturer.forEach(function (b) { if (b.client === c) { if (t.checked) delete decoches[b.numero]; else decoches[b.numero] = true; } });
+    }
+    if (t.getAttribute('data-bon') || t.getAttribute('data-tout')) {
+      var piece = {}; Array.prototype.forEach.call(document.querySelectorAll('[data-piece]'), function (i) { piece[i.getAttribute('data-piece')] = i.value; });
+      dessinerAFacturer();
+      Array.prototype.forEach.call(document.querySelectorAll('[data-piece]'), function (i) { i.value = piece[i.getAttribute('data-piece')] || ''; });
+    }
+  });
+
+  function facturer(client, bouton) {
+    var numeros = bonsFiltres().filter(function (b) { return b.client === client && !decoches[b.numero]; }).map(function (b) { return b.numero; });
+    if (!numeros.length) return;
+    var piece = (document.querySelector('[data-piece="' + client.replace(/"/g, '') + '"]') || {}).value || '';
+    var nom = D.aFacturer.filter(function (b) { return b.client === client; })[0].clientNom;
+    if (!confirm('Marquer ' + numeros.length + ' bon' + (numeros.length > 1 ? 's' : '') + ' de ' + nom + ' comme facturé' + (numeros.length > 1 ? 's' : '') + (piece ? ' (pièce ' + piece + ')' : '') + ' ?')) return;
+    bouton.disabled = true; occupe++;
+    appel('gestionFacturer', { numeros: numeros, piece: piece.trim() })
+      .then(function (r) { occupe--; toast(r.nombre + ' bon(s) marqué(s) facturé(s)' + (r.piece ? ' : ' + r.piece : '')); return charger(true); })
+      .catch(function (e) { occupe--; bouton.disabled = false; toast(e.message, true); charger(true); });
+  }
+
+  // ------------------------------------------------------------ Correction d'un bon
+  function bonParNumero(n) { return D.aFacturer.filter(function (b) { return b.numero === n; })[0]; }
+  function opts(liste, valeur, vide, texte) {
+    var h = '<option value="">' + esc(vide) + '</option>', trouve = !valeur;
+    liste.forEach(function (x) {
+      if (x.code === valeur) trouve = true;
+      if (x.actif === false && x.code !== valeur) return;
+      h += '<option value="' + esc(x.code) + '">' + esc(texte(x)) + '</option>';
+    });
+    if (!trouve) h += '<option value="' + esc(valeur) + '">' + esc(valeur) + '</option>';
+    return h;
+  }
+
+  function ligneEd(l) {
+    var div = document.createElement('div'); div.className = 'ligne-ed';
+    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + opts(D.prestations, l.code, 'Choisir la prestation', function (p) { return p.libelle + ' (' + p.code + ')'; }) + '</select>'
+      + '<input class="e-qte" inputmode="decimal" aria-label="Quantité" placeholder="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>';
+    var s = div.querySelector('.e-code'); s.value = l.code || '';
+    div.querySelector('.e-qte').value = l.quantite === undefined || l.quantite === '' ? '' : String(l.quantite).replace('.', ',');
+    function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
+    s.onchange = u; u();
+    div.querySelector('.retirer').onclick = function () { div.remove(); };
+    $('b-lignes').appendChild(div);
+  }
+  function intrantEd(x) {
+    var div = document.createElement('div'); div.className = 'ligne-ed intr';
+    div.innerHTML = '<input class="i-prod" maxlength="100" placeholder="Produit" aria-label="Produit"><input class="i-dose" inputmode="decimal" placeholder="Dose" aria-label="Dose">'
+      + '<select class="i-unite" aria-label="Unité"><option value="">Unité</option>' + D.unitesIntrant.map(function (u) { return '<option>' + esc(u) + '</option>'; }).join('') + '</select>'
+      + '<button type="button" class="retirer">Retirer</button>';
+    div.querySelector('.i-prod').value = x.produit || '';
+    div.querySelector('.i-dose').value = x.dose === undefined ? '' : String(x.dose).replace('.', ',');
+    div.querySelector('.i-unite').value = x.unite || '';
+    div.querySelector('.retirer').onclick = function () { div.remove(); };
+    $('b-intrants').appendChild(div);
+  }
+  function majSarl() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; }
+
+  function ouvrirBon(numero) {
+    var b = bonParNumero(numero); if (!b) return;
+    bonOuvert = b;
+    $('b-titre').textContent = 'Corriger le bon ' + b.numero;
+    $('b-sous').textContent = 'Saisi par ' + b.chauffeurNom + ' le ' + horodate(b.saisiLe) + (b.idMission ? ', mission ' + b.idMission : ', sans mission');
+    $('b-date').value = b.date; $('b-date').max = D.aujourdhui;
+    $('b-client').innerHTML = opts(D.clients, b.client, 'Choisir le client', function (c) { return c.nom + ' (' + c.code + ')'; });
+    $('b-client').value = b.client;
+    $('b-lieu').value = b.lieu;
+    $('b-parcelle').innerHTML = '<option value="">Choisir la parcelle</option>' + D.parcelles.liste.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('');
+    $('b-parcelle').value = b.parcelle;
+    $('b-lignes').innerHTML = ''; b.lignes.forEach(ligneEd); if (!b.lignes.length) ligneEd({});
+    $('b-intrants').innerHTML = ''; b.intrants.forEach(intrantEd);
+    $('b-heures').value = b.heures === '' ? '' : String(b.heures).replace('.', ',');
+    $('b-remarques').value = b.remarques;
+    majSarl();
+    $('b-histo').hidden = !b.corrections.length;
+    $('b-histo').innerHTML = '<b>Corrections précédentes</b><ul>' + b.corrections.map(function (c) {
+      return '<li>' + horodate(c.date) + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
+    }).join('') + '</ul>';
+    $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
+    $('dlg-bon').showModal();
+  }
+  $('b-client').onchange = majSarl;
+  $('b-ajout-ligne').onclick = function () { ligneEd({}); };
+  $('b-ajout-intrant').onclick = function () { intrantEd({}); };
+  $('b-fermer').onclick = function () { $('dlg-bon').close(); };
+  $('form-bon').addEventListener('input', function () { $('b-erreur').hidden = true; });
+
+  $('form-bon').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var b = bonOuvert, sarl = $('b-client').value === D.codeClientSarl;
+    var donnees = {
+      numero: b.numero, date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
+      parcelle: sarl ? $('b-parcelle').value : '', heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
+      lignes: Array.prototype.map.call($('b-lignes').children, function (d) { return { code: d.querySelector('.e-code').value, quantite: d.querySelector('.e-qte').value.trim() }; }),
+      intrants: !sarl ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
+        return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
+      })
+    };
+    if (!donnees.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
+    for (var i = 0; i < donnees.lignes.length; i++) {
+      if (!donnees.lignes[i].code) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
+      if (!(nombre(donnees.lignes[i].quantite) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez une quantité supérieure à zéro.');
+    }
+    $('b-enregistrer').disabled = true; occupe++;
+    appel('gestionModifierBon', { bon: donnees })
+      .then(function (r) {
+        occupe--; $('dlg-bon').close();
+        toast(r.modifie ? 'Bon ' + r.numero + ' corrigé (' + r.elements.join(', ').toLowerCase() + ')' : 'Aucune modification');
+        return charger(true);
+      })
+      .catch(function (err) { occupe--; $('b-enregistrer').disabled = false; erreurBon(err.message); });
+  });
+  function erreurBon(t) { $('b-erreur').textContent = t; $('b-erreur').hidden = false; }
+
+  $('b-annuler').onclick = function () {
+    var b = bonOuvert;
+    var motif = prompt('Annuler le bon ' + b.numero + ' (' + b.clientNom + ') ? Il ne sera pas facturé.\nIndiquez le motif :');
+    if (motif === null) return;
+    if (!motif.trim()) return erreurBon('Indiquez le motif de l\'annulation.');
+    occupe++;
+    appel('gestionAnnulerBon', { numero: b.numero, motif: motif.trim() })
+      .then(function () { occupe--; $('dlg-bon').close(); toast('Bon ' + b.numero + ' annulé'); return charger(true); })
+      .catch(function (err) { occupe--; erreurBon(err.message); });
+  };
+
+  // ------------------------------------------------------------ Historique
+  function dessinerHistorique() {
+    var f = $('filtre-histo').value.trim().toLowerCase();
+    var l = D.historique.filter(function (b) {
+      return !f || (b.numero + ' ' + b.clientNom + ' ' + b.client + ' ' + b.piece + ' ' + b.chauffeurNom).toLowerCase().indexOf(f) >= 0;
+    });
+    $('histo').innerHTML = l.length ? l.map(function (b) {
+      return '<tr><td class="num">' + esc(b.numero) + '</td><td>' + court(b.date) + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
+        + '<td>' + resume(b.lignes) + '</td><td><span class="pastille' + (b.statut === 'Annulé' ? ' annule' : '') + '">' + esc(b.statut) + '</span></td>'
+        + '<td>' + esc(b.piece) + '</td><td>' + horodate(b.factureLe) + '</td>'
+        + '<td>' + (b.statut === 'Facturé' ? '<button type="button" class="lien-btn" data-remettre="' + esc(b.numero) + '">Remettre à facturer</button>' : '') + '</td></tr>';
+    }).join('') : '<tr><td colspan="9">Aucun bon.</td></tr>';
+  }
+  $('filtre-histo').oninput = dessinerHistorique;
+  $('histo').addEventListener('click', function (e) {
+    var n = e.target.getAttribute('data-remettre'); if (!n) return;
+    if (!confirm('Remettre le bon ' + n + ' dans les bons à facturer ? Le n° de pièce EBP sera effacé.')) return;
+    occupe++;
+    appel('gestionRemettreAFacturer', { numero: n })
+      .then(function () { occupe--; toast('Bon ' + n + ' remis à facturer'); return charger(true); })
+      .catch(function (err) { occupe--; toast(err.message, true); });
+  });
+
+  // ------------------------------------------------------------ Clients, prestations, chauffeurs
+  function listeRef() { return D[onglet === 'client' ? 'clients' : onglet === 'prestation' ? 'prestations' : 'chauffeurs']; }
+  function dessinerReferentiel() {
+    var conf = FICHES[onglet], f = $('filtre-ref').value.trim().toLowerCase(), inact = $('voir-inactifs').checked;
+    $('ajouter').textContent = onglet === 'prestation' ? '+ Ajouter une prestation' : '+ Ajouter un ' + conf.un;
+    $('ref-tete').innerHTML = '<tr>' + conf.colonnes.map(function (c) { return '<th>' + esc(c[1]) + '</th>'; }).join('') + '</tr>';
+    var l = listeRef().filter(function (x) {
+      return (inact || x.actif) && (!f || JSON.stringify(x).toLowerCase().indexOf(f) >= 0);
+    });
+    $('ref-corps').innerHTML = l.length ? l.map(function (x) {
+      return '<tr class="cliquable' + (x.actif ? '' : ' inactif') + '" data-code="' + esc(x.code) + '">' + conf.colonnes.map(function (c) {
+        var v = x[c[0]];
+        if (c[0] === 'actif') return '<td>' + (v ? 'oui' : 'non') + '</td>';
+        if (c[0] === 'code') return '<td class="num">' + esc(v) + '</td>';
+        if (c[0] === 'lien') {
+          var sms = x.telephone ? 'sms:' + encodeURIComponent(x.telephone.replace(/\s/g, '')) + '?body=' + encodeURIComponent('Ton lien pour les bons de travail ETA : ' + v) : '';
+          return '<td>' + (v ? '<div class="lien-ch">' + esc(v) + '</div><div class="actions-ch"><button type="button" class="petit" data-copier-lien="' + esc(v) + '">Copier</button>'
+            + (sms ? '<a class="petit" href="' + esc(sms) + '">Envoyer par SMS</a>' : '')
+            + '<button type="button" class="petit" data-renouveler="' + esc(x.code) + '">Nouveau lien</button></div>' : '') + '</td>';
+        }
+        return '<td>' + esc(v) + '</td>';
+      }).join('') + '</tr>';
+    }).join('') : '<tr><td colspan="' + conf.colonnes.length + '">Aucune fiche.</td></tr>';
+  }
+  $('filtre-ref').oninput = dessinerReferentiel;
+  $('voir-inactifs').onchange = dessinerReferentiel;
+  $('ref-corps').addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.getAttribute('data-copier-lien')) { copier(t.getAttribute('data-copier-lien'), 'Lien'); return; }
+    if (t.closest('a')) return;
+    if (t.getAttribute('data-renouveler')) {
+      var code = t.getAttribute('data-renouveler');
+      if (!confirm('Créer un nouveau lien pour ' + code + ' ? L\'ancien cessera de fonctionner : il faudra lui envoyer le nouveau.')) return;
+      occupe++;
+      appel('gestionRenouvelerLien', { code: code })
+        .then(function () { occupe--; toast('Nouveau lien créé pour ' + code); return charger(true); })
+        .catch(function (err) { occupe--; toast(err.message, true); });
+      return;
+    }
+    var tr = t.closest('tr[data-code]'); if (tr) ouvrirFiche(listeRef().filter(function (x) { return x.code === tr.getAttribute('data-code'); })[0]);
+  });
+  $('ajouter').onclick = function () { ouvrirFiche(null); };
+
+  function ouvrirFiche(x) {
+    var conf = FICHES[onglet];
+    ficheOuverte = { type: onglet, nouveau: !x };
+    $('f-titre').textContent = x ? (x.nom || x.libelle) : (onglet === 'prestation' ? 'Nouvelle prestation' : 'Nouveau ' + conf.un);
+    $('f-sous').textContent = x ? 'Le code ne peut pas être modifié. Pour ne plus proposer cette fiche, décochez « actif » : l\'historique est conservé.'
+      : 'Utilisez le même code que dans EBP.';
+    $('f-champs').innerHTML = conf.champs.map(function (c) {
+      if (c.caseACocher) return '<label class="large case-inline"><input type="checkbox" data-cle="' + c.cle + '"> ' + esc(c.nom) + '</label>';
+      return '<label' + (c.large ? ' class="large"' : '') + '>' + esc(c.nom) + '<input type="text" data-cle="' + c.cle + '" maxlength="' + (c.code ? 20 : 200) + '"'
+        + (c.code && x ? ' disabled' : '') + '></label>';
+    }).join('');
+    conf.champs.forEach(function (c) {
+      var i = document.querySelector('#f-champs [data-cle="' + c.cle + '"]');
+      if (c.caseACocher) i.checked = x ? x.actif : true; else i.value = x ? (x[c.cle] || '') : '';
+    });
+    $('f-erreur').hidden = true; $('f-enregistrer').disabled = false;
+    $('dlg-fiche').showModal();
+    var premier = document.querySelector('#f-champs input:not([disabled])'); if (premier) premier.focus();
+  }
+  $('f-fermer').onclick = function () { $('dlg-fiche').close(); };
+  $('form-fiche').addEventListener('input', function () { $('f-erreur').hidden = true; });
+  $('form-fiche').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var conf = FICHES[ficheOuverte.type], fiche = {};
+    conf.champs.forEach(function (c) {
+      var i = document.querySelector('#f-champs [data-cle="' + c.cle + '"]');
+      fiche[c.cle] = c.caseACocher ? i.checked : i.value.trim();
+    });
+    for (var k = 0; k < conf.champs.length; k++) {
+      var c = conf.champs[k];
+      if ((c.requis || c.code) && !fiche[c.cle]) { $('f-erreur').textContent = c.nom + ' : obligatoire.'; $('f-erreur').hidden = false; return; }
+    }
+    $('f-enregistrer').disabled = true; occupe++;
+    appel('gestionEnregistrerFiche', { type: ficheOuverte.type, fiche: fiche, nouveau: ficheOuverte.nouveau })
+      .then(function (r) { occupe--; $('dlg-fiche').close(); toast((ficheOuverte.nouveau ? 'Créé : ' : 'Enregistré : ') + r.code); return charger(true); })
+      .catch(function (err) { occupe--; $('f-enregistrer').disabled = false; $('f-erreur').textContent = err.message; $('f-erreur').hidden = false; });
+  });
+
+  $('actualiser').onclick = function () { charger(true); };
+  // Mise à jour automatique toutes les 2 minutes (nouveaux bons), sauf pendant une saisie
+  setInterval(function () {
+    if (D && !occupe && !$('dlg-bon').open && !$('dlg-fiche').open && document.visibilityState === 'visible') charger(true);
+  }, 120000);
+
+  charger(false);
+})();
+</script>
+</body>
+</html>
