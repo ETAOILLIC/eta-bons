@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planning ETA</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1E5A38">
+<link rel="icon" href="icone-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fond:#E7ECE6; --surface:#FFFFFF; --surface-2:#F3F6F2; --encre:#16231B; --doux:#56655B;
+  --vert:#1E5A38; --sur-vert:#FFFFFF; --vert-pale:#D3E4D8;
+  --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C3CEC5;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --fond:#0E1611; --surface:#17231B; --surface-2:#132019; --encre:#E6EEE8; --doux:#9DAFA2;
+    --vert:#73C394; --sur-vert:#0B1A11; --vert-pale:#1F3427;
+    --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#2B3B30;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--fond);color:var(--encre);
+  font:15px/1.4 'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--ambre);outline-offset:1px}
+
+/* Barre du haut */
+.barre{position:sticky;top:0;z-index:20;background:var(--vert);color:var(--sur-vert);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px}
+.barre h1{font-size:19px;margin:0 12px 0 0}
+.nav{display:flex;align-items:center;gap:6px}
+.nav button,.barre .clair{background:transparent;border:1.5px solid currentColor;color:inherit;border-radius:8px;
+  min-height:36px;padding:4px 12px;font-weight:700}
+.nav .fleche{width:36px;padding:0;font-size:18px}
+.semaine{font-weight:700;min-width:250px;text-align:center}
+.espace{flex:1}
+.barre .action{background:var(--sur-vert);color:var(--vert);border:0;border-radius:8px;min-height:36px;padding:4px 14px;font-weight:700}
+.etat{font-size:13px;opacity:.85;min-width:110px;text-align:right}
+
+main{padding:14px 16px 40px}
+.alerte{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-weight:700}
+
+/* Grille du planning */
+.defile{overflow-x:auto;border:1px solid var(--trait);border-radius:10px;background:var(--surface)}
+.grille{display:grid;grid-template-columns:130px minmax(210px,1.25fr) repeat(7,minmax(128px,1fr));min-width:1240px}
+.entete{position:sticky;top:0;background:var(--surface-2);border-bottom:2px solid var(--trait);
+  padding:8px 10px;font-weight:700;font-size:14px}
+.entete small{display:block;font-weight:400;color:var(--doux);font-size:12px}
+.entete.aujourdhui{background:var(--vert);color:var(--sur-vert)}
+.entete.aujourdhui small{color:inherit;opacity:.85}
+.entete.attente{background:var(--ambre-pale)}
+.nom{padding:10px;font-weight:700;border-right:1px solid var(--trait);border-bottom:1px solid var(--trait);background:var(--surface-2)}
+.nom small{display:block;font-weight:400;color:var(--doux);font-size:12px}
+.case{min-height:92px;padding:6px;border-right:1px solid var(--trait);border-bottom:1px solid var(--trait);
+  display:flex;flex-direction:column;gap:6px}
+.case.attente{background:var(--ambre-pale)}
+.case.weekend{background:var(--surface-2)}
+.case.passe{background-image:repeating-linear-gradient(135deg,transparent 0 8px,rgba(127,127,127,.06) 8px 16px)}
+.case.survol{outline:3px dashed var(--vert);outline-offset:-4px;background:var(--vert-pale)}
+
+/* Étiquettes de mission */
+.carte{background:var(--surface);border:1px solid var(--trait);border-left:6px solid var(--vert);border-radius:7px;
+  padding:6px 8px;font-size:13px;line-height:1.3;cursor:grab;user-select:none;text-align:left;width:100%}
+.carte:active{cursor:grabbing}
+.carte b{display:block;font-size:14px}
+.carte .presta{display:block}
+.carte .lieu{display:block;color:var(--doux)}
+.carte .dates{display:block;color:var(--doux);font-size:12px;margin-top:2px}
+.carte.a-caser{border-left-color:var(--ambre)}
+.carte.trop-tot{border-left-color:var(--trait);border-style:dashed;border-left-style:solid}
+.carte.trop-tot b{color:var(--doux)}
+.carte.retard{border-left-color:var(--rouge)}
+.carte.retard .dates{color:var(--rouge);font-weight:700}
+.carte.faite{opacity:.6;cursor:pointer;border-left-color:var(--doux)}
+.carte.faite .bon{display:block;font-weight:700;color:var(--vert)}
+.carte.envoi{opacity:.55}
+.carte.glisse{opacity:.35}
+
+.legende{display:flex;gap:18px;flex-wrap:wrap;color:var(--doux);font-size:13px;margin:10px 2px 0}
+.legende i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+/* Derniers bons */
+h2{font-size:17px;margin:28px 0 8px}
+table{border-collapse:collapse;width:100%;background:var(--surface);border:1px solid var(--trait);border-radius:10px;overflow:hidden;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--trait)}
+th{background:var(--surface-2);font-size:13px}
+td.num{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pastille{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;font-weight:700;background:var(--vert-pale)}
+.pastille.facturer{background:var(--ambre-pale)}
+
+/* Fiche mission */
+dialog{border:0;border-radius:12px;padding:0;width:min(560px,94vw);background:var(--surface);color:var(--encre);
+  box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,20,14,.45)}
+.fiche{padding:18px 20px}
+.fiche h3{margin:0 0 4px;font-size:20px}
+.fiche .sous{margin:0 0 14px;color:var(--doux);font-size:13px}
+.champs{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.champs .large{grid-column:1/-1}
+label{display:block;font-weight:700;font-size:13px}
+label input,label select,label textarea{display:block;width:100%;margin-top:4px;font-weight:400;font-size:15px;
+  background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px}
+textarea{min-height:64px;resize:vertical}
+.aide{font-weight:400;color:var(--doux);font-size:12px}
+.boutons{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.boutons .principal{background:var(--vert);color:var(--sur-vert);border:0;border-radius:8px;min-height:40px;padding:6px 18px;font-weight:700}
+.boutons .secondaire{background:transparent;border:1.5px solid var(--trait);border-radius:8px;min-height:40px;padding:6px 14px}
+.boutons .danger{background:transparent;border:0;color:var(--rouge);text-decoration:underline;padding:6px 4px}
+.boutons .espace{flex:1}
+.erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:7px;padding:8px 10px;font-weight:700;margin:12px 0 0}
+.info{background:var(--vert-pale);border-radius:7px;padding:8px 10px;margin:0 0 12px}
+
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--encre);color:var(--fond);
+  padding:10px 16px;border-radius:8px;font-weight:700;z-index:50;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.toast.erreur-t{background:var(--rouge);color:#fff}
+.chargement{padding:60px 0;text-align:center;color:var(--doux);font-size:18px}
+.vide-lien{max-width:540px;margin:60px auto;background:var(--surface);border-radius:12px;padding:24px}
+</style>
+</head>
+<body>
+<header class="barre">
+  <h1>Planning ETA</h1>
+  <div class="nav">
+    <button type="button" class="fleche" id="prec" title="Semaine précédente" aria-label="Semaine précédente">‹</button>
+    <span class="semaine" id="semaine">…</span>
+    <button type="button" class="fleche" id="suiv" title="Semaine suivante" aria-label="Semaine suivante">›</button>
+    <button type="button" id="cette">Cette semaine</button>
+  </div>
+  <span class="espace"></span>
+  <span class="etat" id="etat"></span>
+  <button type="button" class="clair" id="actualiser" title="Recharger le planning">Actualiser</button>
+  <button type="button" class="action" id="nouvelle">+ Nouvelle mission</button>
+</header>
+
+<main>
+  <section class="vide-lien" id="vue-lien" hidden>
+    <h2 style="margin-top:0">Lien du bureau non valide</h2>
+    <p id="lien-texte">Ouvrez le lien de l'écran bureau : dans la Google Sheet, menu ETA → « Lien de l'écran bureau ». Il est ensuite mémorisé sur cet ordinateur.</p>
+  </section>
+
+  <section id="vue-planning" hidden>
+    <div class="alerte" id="alerte" hidden></div>
+    <div class="defile"><div class="grille" id="grille"></div></div>
+    <div class="legende">
+      <span><i style="background:var(--ambre)"></i>À caser : la date « à partir du » est arrivée</span>
+      <span><i style="background:var(--trait)"></i>Pas encore : date « à partir du » à venir</span>
+      <span><i style="background:var(--rouge)"></i>En retard</span>
+      <span><i style="background:var(--vert)"></i>Planifiée</span>
+      <span>Glissez une mission vers un jour et un chauffeur. Double-cliquez dans une case pour y créer une mission.</span>
+    </div>
+
+    <h2>Derniers bons reçus</h2>
+    <table>
+      <thead><tr><th>N° bon</th><th>Date</th><th>Chauffeur</th><th>Client</th><th>Mission</th><th>Statut</th></tr></thead>
+      <tbody id="bons"></tbody>
+    </table>
+  </section>
+
+  <div class="chargement" id="chargement">Chargement du planning…</div>
+</main>
+
+<dialog id="fiche">
+  <form class="fiche" id="form-fiche" method="dialog" novalidate>
+    <h3 id="f-titre">Nouvelle mission</h3>
+    <p class="sous" id="f-sous"></p>
+    <p class="info" id="f-info" hidden></p>
+    <div class="champs">
+      <label class="large">Client
+        <select id="f-client"></select>
+      </label>
+      <label class="large">Prestation
+        <select id="f-prestation"></select>
+      </label>
+      <label class="large">Parcelle ou lieu
+        <input type="text" id="f-lieu" maxlength="200" autocomplete="off">
+      </label>
+      <label class="large">Consignes pour le chauffeur
+        <textarea id="f-consignes" maxlength="500"></textarea>
+      </label>
+      <label>À partir du
+        <input type="date" id="f-apartir">
+      </label>
+      <label>Au plus tard <span class="aide">(facultatif)</span>
+        <input type="date" id="f-auplustard">
+      </label>
+      <label>Jour prévu <span class="aide">(vide = en attente)</span>
+        <input type="date" id="f-jour">
+      </label>
+      <label>Chauffeur
+        <select id="f-chauffeur"></select>
+      </label>
+    </div>
+    <p class="erreur" id="f-erreur" role="alert" hidden></p>
+    <div class="boutons">
+      <button type="button" class="danger" id="f-annuler-mission" hidden>Annuler la mission</button>
+      <span class="espace"></span>
+      <button type="button" class="secondaire" id="f-fermer">Fermer</button>
+      <button type="submit" class="principal" id="f-enregistrer">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+  // Adresse du moteur Apps Script (même déploiement que la page chauffeur)
+  var API = 'https://script.google.com/macros/s/AKfycbx7hxNNGt6Y9YPm_NSdtgphAE6llwKNhHKnHDfDQLRNHzvMb5G_5rb8lDkEApCSm1GR/exec';
+
+  // Jeton du bureau : pris dans le lien (?b=…) puis mémorisé sur cet ordinateur
+  var CLE = 'eta-bureau-jeton';
+  var JETON = new URLSearchParams(location.search).get('b') || '';
+  try {
+    if (/^[0-9a-f]{32}$/.test(JETON)) localStorage.setItem(CLE, JETON);
+    else JETON = localStorage.getItem(CLE) || '';
+  } catch (e) { /* stockage indisponible */ }
+
+  var JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  var D = null;            // données de la semaine affichée
+  var debut = '';          // lundi demandé ('' = semaine en cours)
+  var enCours = null;      // mission ouverte dans la fiche (null = création)
+  var glisse = null;       // id de la mission en cours de glissement
+  var occupe = 0;          // nombre d'enregistrements en cours
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function dateObj(iso) { return new Date(iso + 'T12:00:00'); }
+  function isoDe(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function decaler(iso, n) { var d = dateObj(iso); d.setDate(d.getDate() + n); return isoDe(d); }
+  function court(iso) { return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : ''; }
+  function numSemaine(iso) {
+    var d = dateObj(iso); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    var j4 = new Date(d.getFullYear(), 0, 4, 12);
+    return 1 + Math.round(((d - j4) / 864e5 - 3 + ((j4.getDay() + 6) % 7)) / 7);
+  }
+  function moisLong(iso) { return dateObj(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
+
+  function appel(action, donnees) {
+    var corps = { action: action, jetonBureau: JETON };
+    for (var k in donnees) corps[k] = donnees[k];
+    return fetch(API, { method: 'POST', body: JSON.stringify(corps), credentials: 'omit', redirect: 'follow' })
+      .catch(function () { throw new Error('Pas de connexion au serveur. Vérifiez le réseau.'); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Serveur indisponible (code ' + r.status + ').');
+        return r.json().catch(function () { throw new Error('Réponse illisible du serveur.'); });
+      })
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.erreur || 'Erreur inconnue.');
+        return j.resultat;
+      });
+  }
+
+  var minuteurToast = null;
+  function toast(texte, erreur) {
+    var t = $('toast');
+    t.textContent = texte; t.className = 'toast' + (erreur ? ' erreur-t' : ''); t.hidden = false;
+    clearTimeout(minuteurToast);
+    minuteurToast = setTimeout(function () { t.hidden = true; }, erreur ? 7000 : 3000);
+  }
+  function etat(t) { $('etat').textContent = t || ''; }
+
+  // ------------------------------------------------------------ Chargement
+  function charger(silencieux) {
+    if (!JETON) { $('chargement').hidden = true; $('vue-lien').hidden = false; return; }
+    if (!silencieux) { $('chargement').hidden = false; }
+    etat('Mise à jour…');
+    return appel('bureauCharger', { debut: debut })
+      .then(function (d) {
+        D = d; debut = d.lundi;
+        $('chargement').hidden = true; $('vue-planning').hidden = false; $('alerte').hidden = true;
+        dessiner();
+        etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+      })
+      .catch(function (e) {
+        $('chargement').hidden = true;
+        etat('');
+        if (/Lien du bureau non valide/.test(e.message)) {
+          try { localStorage.removeItem(CLE); } catch (x) {}
+          $('vue-planning').hidden = true; $('lien-texte').textContent = e.message; $('vue-lien').hidden = false;
+          return;
+        }
+        $('vue-planning').hidden = !D;
+        if (!D) { $('vue-lien').hidden = false; $('lien-texte').textContent = 'Chargement impossible : ' + e.message; return; }
+        $('alerte').textContent = 'Mise à jour impossible : ' + e.message; $('alerte').hidden = false;
+      });
+  }
+
+  // ------------------------------------------------------------ Dessin du planning
+  function jours() { var t = []; for (var i = 0; i < 7; i++) t.push(decaler(D.lundi, i)); return t; }
+
+  function classeCarte(m) {
+    if (m.statut === 'Faite') return 'faite';
+    var auj = D.aujourdhui;
+    if ((m.auPlusTard && m.auPlusTard < auj) || (m.datePrevue && m.datePrevue < auj)) return 'retard';
+    if (!m.datePrevue) return (!m.aPartirDu || m.aPartirDu <= auj) ? 'a-caser' : 'trop-tot';
+    return '';
+  }
+
+  function carte(m) {
+    var c = classeCarte(m);
+    var dates = [];
+    if (m.aPartirDu && !m.datePrevue) dates.push((m.aPartirDu > D.aujourdhui ? 'pas avant le ' : 'dès le ') + court(m.aPartirDu));
+    if (m.auPlusTard) dates.push('avant le ' + court(m.auPlusTard));
+    if (m.datePrevue && m.datePrevue < D.aujourdhui && m.statut !== 'Faite') dates.unshift('non faite');
+    return '<button type="button" class="carte ' + c + '" data-id="' + esc(m.id) + '"'
+      + (m.statut === 'Faite' ? '' : ' draggable="true"')
+      + ' title="' + esc(m.id + (m.consignes ? ' : ' + m.consignes : '')) + '">'
+      + '<b>' + esc(m.clientNom) + '</b>'
+      + '<span class="presta">' + esc(m.prestationLibelle) + '</span>'
+      + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
+      + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + '</span>' : '')
+      + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
+      + '</button>';
+  }
+
+  function trierAttente(a, b) {
+    return (a.aPartirDu || '0000').localeCompare(b.aPartirDu || '0000') || a.clientNom.localeCompare(b.clientNom, 'fr');
+  }
+
+  function dessiner() {
+    var lundi = D.lundi, dim = decaler(lundi, 6), js = jours();
+    $('semaine').textContent = 'Semaine ' + numSemaine(lundi) + ' : '
+      + dateObj(lundi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' au ' + moisLong(dim);
+
+    var lignes = [{ code: '', nom: 'Non affecté', note: 'chauffeur à choisir' }].concat(D.chauffeurs.map(function (c) {
+      return { code: c.code, nom: c.nom, note: c.actif ? '' : 'inactif' };
+    }));
+    var connus = {}; lignes.forEach(function (l) { connus[l.code] = true; });
+
+    var h = '<div class="entete">Chauffeur</div><div class="entete attente">En attente<small>sans jour fixé</small></div>';
+    js.forEach(function (j, i) {
+      h += '<div class="entete' + (j === D.aujourdhui ? ' aujourdhui' : '') + '">' + JOURS[i]
+        + '<small>' + dateObj(j).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) + '</small></div>';
+    });
+
+    lignes.forEach(function (l) {
+      h += '<div class="nom">' + esc(l.nom) + (l.note ? '<small>' + esc(l.note) + '</small>' : '') + '</div>';
+      var attente = D.missions.filter(function (m) {
+        return !m.datePrevue && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
+      }).sort(trierAttente);
+      h += '<div class="case attente" data-chauffeur="' + esc(l.code) + '" data-date="">' + attente.map(carte).join('') + '</div>';
+      js.forEach(function (j, i) {
+        var du = D.missions.filter(function (m) {
+          return m.datePrevue === j && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
+        });
+        var cl = 'case' + (i >= 5 ? ' weekend' : '') + (j < D.aujourdhui ? ' passe' : '');
+        h += '<div class="' + cl + '" data-chauffeur="' + esc(l.code) + '" data-date="' + j + '">' + du.map(carte).join('') + '</div>';
+      });
+    });
+    $('grille').innerHTML = h;
+
+    $('bons').innerHTML = D.bons.length ? D.bons.map(function (b) {
+      return '<tr><td class="num">' + esc(b.numero) + '</td><td>' + esc(court(b.date)) + '</td><td>' + esc(b.chauffeurNom)
+        + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.idMission || 'sans mission') + '</td><td><span class="pastille'
+        + (b.statut === 'À facturer' ? ' facturer' : '') + '">' + esc(b.statut) + '</span></td></tr>';
+    }).join('') : '<tr><td colspan="6">Aucun bon reçu.</td></tr>';
+  }
+
+  function missionParId(id) { return D.missions.filter(function (m) { return m.id === id; })[0]; }
+
+  // ------------------------------------------------------------ Enregistrement
+  function enregistrer(m, ancienne) {
+    occupe++; etat('Enregistrement…');
+    return appel('bureauEnregistrerMission', { mission: m })
+      .then(function (r) {
+        occupe--;
+        var i = D.missions.indexOf(missionParId(r.id) || {});
+        if (i >= 0) D.missions[i] = r; else D.missions.push(r);
+        dessiner(); etat('Enregistré');
+        return r;
+      })
+      .catch(function (e) {
+        occupe--;
+        if (ancienne) { var i = D.missions.indexOf(missionParId(ancienne.id)); if (i >= 0) D.missions[i] = ancienne; dessiner(); }
+        toast(e.message, true);
+        if (/modifiée entre-temps|ne peut plus être modifiée|introuvable/.test(e.message)) charger(true);
+        throw e;
+      });
+  }
+
+  function deplacer(id, chauffeur, date) {
+    var m = missionParId(id);
+    if (!m || (m.chauffeur === chauffeur && m.datePrevue === date)) return;
+    var ancienne = JSON.parse(JSON.stringify(m));
+    var nouvelle = JSON.parse(JSON.stringify(m));
+    nouvelle.chauffeur = chauffeur; nouvelle.datePrevue = date;
+    // Affichage immédiat, confirmé ou annulé par la réponse du serveur
+    D.missions[D.missions.indexOf(m)] = nouvelle;
+    nouvelle.statut = date ? 'Planifiée' : 'À planifier';
+    dessiner();
+    var el = document.querySelector('.carte[data-id="' + id + '"]'); if (el) el.classList.add('envoi');
+    enregistrer(nouvelle, ancienne).catch(function () {});
+  }
+
+  // ------------------------------------------------------------ Glisser-déposer
+  var grille = $('grille');
+  grille.addEventListener('dragstart', function (e) {
+    var c = e.target.closest('.carte'); if (!c) return;
+    glisse = c.getAttribute('data-id');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', glisse);
+    setTimeout(function () { c.classList.add('glisse'); }, 0);
+  });
+  grille.addEventListener('dragend', function () {
+    glisse = null;
+    Array.prototype.forEach.call(grille.querySelectorAll('.survol,.glisse'), function (x) { x.classList.remove('survol', 'glisse'); });
+  });
+  grille.addEventListener('dragover', function (e) {
+    var cs = e.target.closest('.case'); if (!cs || !glisse) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    if (!cs.classList.contains('survol')) {
+      Array.prototype.forEach.call(grille.querySelectorAll('.survol'), function (x) { x.classList.remove('survol'); });
+      cs.classList.add('survol');
+    }
+  });
+  grille.addEventListener('drop', function (e) {
+    var cs = e.target.closest('.case'); if (!cs) return;
+    e.preventDefault();
+    var id = e.dataTransfer.getData('text/plain') || glisse;
+    cs.classList.remove('survol');
+    if (id) deplacer(id, cs.getAttribute('data-chauffeur'), cs.getAttribute('data-date'));
+  });
+  grille.addEventListener('click', function (e) {
+    var c = e.target.closest('.carte'); if (c) ouvrirFiche(missionParId(c.getAttribute('data-id')));
+  });
+  grille.addEventListener('dblclick', function (e) {
+    if (e.target.closest('.carte')) return;
+    var cs = e.target.closest('.case'); if (!cs) return;
+    ouvrirFiche(null, { chauffeur: cs.getAttribute('data-chauffeur'), datePrevue: cs.getAttribute('data-date') });
+  });
+
+  // ------------------------------------------------------------ Fiche mission
+  function options(liste, valeur, vide, texte) {
+    var h = vide ? '<option value="">' + esc(vide) + '</option>' : '';
+    var trouve = !valeur;
+    liste.forEach(function (x) {
+      if (x.code === valeur) trouve = true;
+      h += '<option value="' + esc(x.code) + '">' + esc(texte(x)) + '</option>';
+    });
+    if (!trouve) h += '<option value="' + esc(valeur) + '">' + esc(valeur) + ' (inactif)</option>';
+    return h;
+  }
+
+  function ouvrirFiche(m, defauts) {
+    enCours = m || null;
+    var v = m || { client: '', prestation: '', lieu: '', consignes: '', aPartirDu: D.aujourdhui, auPlusTard: '',
+      datePrevue: (defauts && defauts.datePrevue) || '', chauffeur: (defauts && defauts.chauffeur) || '' };
+    var fige = !!m && (m.statut === 'Faite' || m.statut === 'Annulée');
+    $('f-titre').textContent = m ? 'Mission ' + m.id : 'Nouvelle mission';
+    $('f-sous').textContent = m ? 'Statut : ' + m.statut + (m.datePrevue ? '' : ' (en attente)') : 'Seuls le client et la prestation sont obligatoires.';
+    $('f-info').hidden = !fige;
+    $('f-info').textContent = fige ? 'Bon ' + (m.numeroBon || '') + ' reçu : la mission ne peut plus être modifiée.' : '';
+    $('f-client').innerHTML = options(D.clients, v.client, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
+    $('f-prestation').innerHTML = options(D.prestations, v.prestation, 'Choisir la prestation', function (p) { return p.libelle + (p.unite ? ' (' + p.unite + ')' : ''); });
+    $('f-chauffeur').innerHTML = options(D.chauffeurs.filter(function (c) { return c.actif; }), v.chauffeur, 'Non affecté', function (c) { return c.nom; });
+    $('f-client').value = v.client; $('f-prestation').value = v.prestation; $('f-chauffeur').value = v.chauffeur;
+    $('f-lieu').value = v.lieu; $('f-consignes').value = v.consignes;
+    $('f-apartir').value = v.aPartirDu; $('f-auplustard').value = v.auPlusTard; $('f-jour').value = v.datePrevue;
+    Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
+    $('f-enregistrer').hidden = fige;
+    $('f-annuler-mission').hidden = !m || fige;
+    $('f-erreur').hidden = true;
+    $('fiche').showModal();
+    if (!fige) (m ? $('f-jour') : $('f-client')).focus();
+  }
+
+  function erreurFiche(t) { $('f-erreur').textContent = t; $('f-erreur').hidden = false; }
+
+  $('form-fiche').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var m = {
+      id: enCours ? enCours.id : '', version: enCours ? enCours.version : '',
+      client: $('f-client').value, prestation: $('f-prestation').value,
+      lieu: $('f-lieu').value.trim(), consignes: $('f-consignes').value.trim(),
+      aPartirDu: $('f-apartir').value, auPlusTard: $('f-auplustard').value,
+      datePrevue: $('f-jour').value, chauffeur: $('f-chauffeur').value
+    };
+    if (!m.client) return erreurFiche('Choisissez le client.');
+    if (!m.prestation) return erreurFiche('Choisissez la prestation.');
+    if (m.aPartirDu && m.auPlusTard && m.auPlusTard < m.aPartirDu) return erreurFiche('La date « au plus tard » est antérieure à la date « à partir du ».');
+    if (m.datePrevue && m.aPartirDu && m.datePrevue < m.aPartirDu
+      && !confirm('Le jour prévu est avant la date « à partir du » demandée par le client. Enregistrer quand même ?')) return;
+    $('f-enregistrer').disabled = true;
+    enregistrer(m, null)
+      .then(function (r) {
+        $('f-enregistrer').disabled = false; $('fiche').close();
+        toast((enCours ? 'Mission ' : 'Mission créée : ') + r.id + (r.datePrevue ? ' planifiée le ' + court(r.datePrevue) : ' en attente'));
+        if (r.datePrevue && (r.datePrevue < D.lundi || r.datePrevue > decaler(D.lundi, 6))) {
+          toast('Mission ' + r.id + ' planifiée le ' + court(r.datePrevue) + ' : hors de la semaine affichée.');
+          D.missions = D.missions.filter(function (x) { return x.id !== r.id; }); dessiner();
+        }
+      })
+      .catch(function (err) { $('f-enregistrer').disabled = false; erreurFiche(err.message); });
+  });
+
+  $('f-annuler-mission').onclick = function () {
+    if (!enCours || !confirm('Annuler la mission ' + enCours.id + ' (' + enCours.clientNom + ') ? Elle disparaîtra du planning et du téléphone du chauffeur.')) return;
+    var m = enCours;
+    appel('bureauAnnulerMission', { id: m.id, version: m.version })
+      .then(function () {
+        D.missions = D.missions.filter(function (x) { return x.id !== m.id; });
+        dessiner(); $('fiche').close(); toast('Mission ' + m.id + ' annulée.');
+      })
+      .catch(function (e) { erreurFiche(e.message); });
+  };
+  $('f-fermer').onclick = function () { $('fiche').close(); };
+  $('form-fiche').addEventListener('input', function () { $('f-erreur').hidden = true; });
+
+  // ------------------------------------------------------------ Barre du haut
+  function semaine(n) { if (D) { debut = decaler(D.lundi, n); charger(false); } }
+  $('prec').onclick = function () { semaine(-7); };
+  $('suiv').onclick = function () { semaine(7); };
+  $('cette').onclick = function () { debut = ''; charger(false); };
+  $('actualiser').onclick = function () { charger(true); };
+  $('nouvelle').onclick = function () { if (D) ouvrirFiche(null); };
+
+  // Mise à jour automatique toutes les 2 minutes (bons reçus, missions faites), sauf pendant une saisie
+  setInterval(function () {
+    if (D && !occupe && !glisse && !$('fiche').open && document.visibilityState === 'visible') charger(true);
+  }, 120000);
+
+  charger(false);
+})();
+</script>
+</body>
+</html>
