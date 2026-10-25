@@ -15,6 +15,7 @@
   --fond:#E7ECE6; --surface:#FFFFFF; --surface-2:#F3F6F2; --encre:#16231B; --doux:#56655B;
   --vert:#1E5A38; --sur-vert:#FFFFFF; --vert-pale:#D3E4D8;
   --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C3CEC5;
+  --bleu:#2F5D8A; --bleu-pale:#DCE7F2;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
@@ -22,6 +23,7 @@
     --fond:#0E1611; --surface:#17231B; --surface-2:#132019; --encre:#E6EEE8; --doux:#9DAFA2;
     --vert:#73C394; --sur-vert:#0B1A11; --vert-pale:#1F3427;
     --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#2B3B30;
+    --bleu:#8DB4E2; --bleu-pale:#1B2A3A;
     color-scheme:dark;
   }
 }
@@ -81,8 +83,10 @@ main{padding:14px 16px 40px}
 .carte.trop-tot b{color:var(--doux)}
 .carte.retard{border-left-color:var(--rouge)}
 .carte.retard .dates{color:var(--rouge);font-weight:700}
-.carte.faite{opacity:.6;cursor:pointer;border-left-color:var(--doux)}
+.carte.faite{background:var(--vert-pale);border-color:var(--vert);border-left-color:var(--vert);cursor:pointer}
 .carte.faite .bon{display:block;font-weight:700;color:var(--vert)}
+.carte.libre{background:var(--bleu-pale);border:1px dashed var(--bleu);border-left:6px solid var(--bleu);cursor:pointer}
+.carte.libre .bon{display:block;font-weight:700;color:var(--bleu)}
 .carte.envoi{opacity:.55}
 .carte.glisse{opacity:.35}
 
@@ -119,6 +123,17 @@ textarea{min-height:64px;resize:vertical}
 .boutons .espace{flex:1}
 .erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:7px;padding:8px 10px;font-weight:700;margin:12px 0 0}
 .info{background:var(--vert-pale);border-radius:7px;padding:8px 10px;margin:0 0 12px}
+.boutons .saisir{background:transparent;border:1.5px solid var(--vert);color:var(--vert);border-radius:8px;min-height:40px;padding:6px 14px;font-weight:700}
+#dlg-bon{width:min(680px,96vw);max-height:92vh}
+.groupe{grid-column:1/-1;border:1px solid var(--trait);border-radius:9px;padding:8px 12px 12px}
+.groupe.sarl{border:2px solid var(--ambre)}
+.groupe h4{margin:2px 0 6px;font-size:14px}
+.ligne-ed{display:grid;grid-template-columns:1fr 120px 44px 64px;gap:8px;align-items:center;margin-bottom:6px}
+.ligne-ed.intr{grid-template-columns:1fr 100px 110px 64px}
+.ligne-ed input,.ligne-ed select{display:block;width:100%;font-size:15px;background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px}
+.ligne-ed .u{font-weight:700}
+.retirer{background:none;border:0;color:var(--rouge);text-decoration:underline;font-size:13px}
+.lien-btn{background:none;border:0;color:var(--vert);font-weight:700;text-decoration:underline;padding:4px 0}
 
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--encre);color:var(--fond);
   padding:10px 16px;border-radius:8px;font-weight:700;z-index:50;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.3)}
@@ -140,6 +155,7 @@ textarea{min-height:64px;resize:vertical}
   <span class="etat" id="etat"></span>
   <button type="button" class="clair" id="actualiser" title="Recharger le planning">Actualiser</button>
   <a class="clair" href="gestion.html">Gestion</a>
+  <button type="button" class="clair" id="nouveau-bon" title="Saisir un bon à la place d'un chauffeur">+ Saisir un bon</button>
   <button type="button" class="action" id="nouvelle">+ Nouvelle mission</button>
 </header>
 
@@ -157,6 +173,8 @@ textarea{min-height:64px;resize:vertical}
       <span><i style="background:var(--trait)"></i>Pas encore : date « à partir du » à venir</span>
       <span><i style="background:var(--rouge)"></i>En retard</span>
       <span><i style="background:var(--vert)"></i>Planifiée</span>
+      <span><i style="background:var(--vert-pale);border:1px solid var(--vert)"></i>Faite (bon reçu)</span>
+      <span><i style="background:var(--bleu-pale);border:1px dashed var(--bleu)"></i>Travail sans mission (bon reçu)</span>
       <span>Glissez une mission vers un jour et un chauffeur. Double-cliquez dans une case pour y créer une mission.</span>
     </div>
 
@@ -205,8 +223,41 @@ textarea{min-height:64px;resize:vertical}
     <div class="boutons">
       <button type="button" class="danger" id="f-annuler-mission" hidden>Annuler la mission</button>
       <span class="espace"></span>
+      <button type="button" class="saisir" id="f-saisir-bon" hidden>Saisir le bon</button>
       <button type="button" class="secondaire" id="f-fermer">Fermer</button>
       <button type="submit" class="principal" id="f-enregistrer">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-bon">
+  <form class="fiche" id="form-bon" method="dialog" novalidate>
+    <h3 id="b-titre">Saisir un bon</h3>
+    <p class="sous" id="b-sous">Bon saisi par le bureau à la place du chauffeur : la saisie est tracée.</p>
+    <div class="champs">
+      <label>Chauffeur<select id="b-chauffeur"></select></label>
+      <label>Date de l'intervention<input type="date" id="b-date"></label>
+      <label class="large">Client<select id="b-client"></select></label>
+      <label class="large">Parcelle ou lieu<input type="text" id="b-lieu" maxlength="200" autocomplete="off"></label>
+      <div class="groupe sarl" id="b-sarl" hidden>
+        <h4>SARL des Trois Étangs</h4>
+        <label>Parcelle (îlot PAC)<select id="b-parcelle"></select></label>
+        <div id="b-intrants" style="margin-top:10px"></div>
+        <button type="button" class="lien-btn" id="b-ajout-intrant">+ Ajouter un intrant</button>
+      </div>
+      <div class="groupe">
+        <h4>Travaux réalisés</h4>
+        <div id="b-lignes"></div>
+        <button type="button" class="lien-btn" id="b-ajout-ligne">+ Ajouter une prestation</button>
+      </div>
+      <label>Heures de travail<input type="text" inputmode="decimal" id="b-heures" autocomplete="off"></label>
+      <label class="large">Remarques<textarea id="b-remarques" maxlength="1000"></textarea></label>
+    </div>
+    <p class="erreur" id="b-erreur" role="alert" hidden></p>
+    <div class="boutons">
+      <span class="espace"></span>
+      <button type="button" class="secondaire" id="b-fermer">Fermer</button>
+      <button type="submit" class="principal" id="b-enregistrer">Enregistrer le bon</button>
     </div>
   </form>
 </dialog>
@@ -330,6 +381,13 @@ textarea{min-height:64px;resize:vertical}
       + '</button>';
   }
 
+  function carteLibre(b) {
+    return '<button type="button" class="carte libre" data-bon="' + esc(b.numero) + '" title="Travail sans mission">'
+      + '<b>' + esc(b.clientNom) + '</b><span class="presta">' + esc(b.travaux) + '</span>'
+      + (b.lieu ? '<span class="lieu">' + esc(b.lieu) + '</span>' : '')
+      + '<span class="bon">✓ ' + esc(b.numero) + ' (sans mission)</span></button>';
+  }
+
   function trierAttente(a, b) {
     return (a.aPartirDu || '0000').localeCompare(b.aPartirDu || '0000') || a.clientNom.localeCompare(b.clientNom, 'fr');
   }
@@ -360,8 +418,11 @@ textarea{min-height:64px;resize:vertical}
         var du = D.missions.filter(function (m) {
           return m.datePrevue === j && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
         });
+        var libres = (D.bonsLibres || []).filter(function (b) {
+          return b.date === j && (b.chauffeur === l.code || (l.code === '' && !connus[b.chauffeur]));
+        });
         var cl = 'case' + (i >= 5 ? ' weekend' : '') + (j < D.aujourdhui ? ' passe' : '');
-        h += '<div class="' + cl + '" data-chauffeur="' + esc(l.code) + '" data-date="' + j + '">' + du.map(carte).join('') + '</div>';
+        h += '<div class="' + cl + '" data-chauffeur="' + esc(l.code) + '" data-date="' + j + '">' + du.map(carte).join('') + libres.map(carteLibre).join('') + '</div>';
       });
     });
     $('grille').innerHTML = h;
@@ -412,7 +473,7 @@ textarea{min-height:64px;resize:vertical}
   // ------------------------------------------------------------ Glisser-déposer
   var grille = $('grille');
   grille.addEventListener('dragstart', function (e) {
-    var c = e.target.closest('.carte'); if (!c) return;
+    var c = e.target.closest('.carte'); if (!c || !c.getAttribute('data-id')) return;
     glisse = c.getAttribute('data-id');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', glisse);
@@ -438,7 +499,13 @@ textarea{min-height:64px;resize:vertical}
     if (id) deplacer(id, cs.getAttribute('data-chauffeur'), cs.getAttribute('data-date'));
   });
   grille.addEventListener('click', function (e) {
-    var c = e.target.closest('.carte'); if (c) ouvrirFiche(missionParId(c.getAttribute('data-id')));
+    var c = e.target.closest('.carte'); if (!c) return;
+    if (c.getAttribute('data-bon')) {
+      var b = D.bonsLibres.filter(function (x) { return x.numero === c.getAttribute('data-bon'); })[0];
+      toast(b.numero + ' (' + b.statut + ') : ' + b.clientNom + ', ' + b.travaux + '. Correction possible dans Gestion.');
+      return;
+    }
+    ouvrirFiche(missionParId(c.getAttribute('data-id')));
   });
   grille.addEventListener('dblclick', function (e) {
     if (e.target.closest('.carte')) return;
@@ -476,6 +543,7 @@ textarea{min-height:64px;resize:vertical}
     Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
     $('f-enregistrer').hidden = fige;
     $('f-annuler-mission').hidden = !m || fige;
+    $('f-saisir-bon').hidden = !m || fige;
     $('f-erreur').hidden = true;
     $('fiche').showModal();
     if (!fige) (m ? $('f-jour') : $('f-client')).focus();
@@ -523,6 +591,91 @@ textarea{min-height:64px;resize:vertical}
   $('f-fermer').onclick = function () { $('fiche').close(); };
   $('form-fiche').addEventListener('input', function () { $('f-erreur').hidden = true; });
 
+  // ------------------------------------------------------------ Saisie d'un bon à la place du chauffeur
+  var bonMission = null, idEnvoiBon = null;
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  function nombre(s) { s = String(s).replace(/\s/g, '').replace(',', '.'); var v = Number(s); return s !== '' && isFinite(v) ? v : NaN; }
+  function optionsActives(liste, vide, texte) {
+    return '<option value="">' + esc(vide) + '</option>' + liste.filter(function (x) { return x.actif !== false; })
+      .map(function (x) { return '<option value="' + esc(x.code) + '">' + esc(texte(x)) + '</option>'; }).join('');
+  }
+  function ligneBon(code) {
+    var div = document.createElement('div'); div.className = 'ligne-ed';
+    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + optionsActives(D.prestations, 'Choisir la prestation', function (p) { return p.libelle; }) + '</select>'
+      + '<input class="e-qte" inputmode="decimal" autocomplete="off" placeholder="Quantité" aria-label="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>';
+    var s = div.querySelector('.e-code'); s.value = code || '';
+    function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
+    s.onchange = u; u();
+    div.querySelector('.retirer').onclick = function () { div.remove(); };
+    $('b-lignes').appendChild(div);
+  }
+  function intrantBon() {
+    var div = document.createElement('div'); div.className = 'ligne-ed intr';
+    div.innerHTML = '<input class="i-prod" maxlength="100" placeholder="Produit" aria-label="Produit"><input class="i-dose" inputmode="decimal" placeholder="Dose" aria-label="Dose">'
+      + '<select class="i-unite" aria-label="Unité"><option value="">Unité</option>' + D.unitesIntrant.map(function (u) { return '<option>' + esc(u) + '</option>'; }).join('') + '</select>'
+      + '<button type="button" class="retirer">Retirer</button>';
+    div.querySelector('.retirer').onclick = function () { div.remove(); };
+    $('b-intrants').appendChild(div);
+  }
+  function majSarlBon() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; }
+
+  function ouvrirBon(m) {
+    bonMission = m || null; idEnvoiBon = uuid();
+    $('form-bon').reset();
+    $('b-titre').textContent = m ? 'Saisir le bon de la mission ' + m.id : 'Saisir un bon (travail sans mission)';
+    $('b-chauffeur').innerHTML = optionsActives(D.chauffeurs, 'Choisir le chauffeur', function (c) { return c.nom; });
+    $('b-chauffeur').value = m ? m.chauffeur : '';
+    $('b-date').max = D.aujourdhui;
+    $('b-date').value = m && m.datePrevue && m.datePrevue <= D.aujourdhui ? m.datePrevue : D.aujourdhui;
+    $('b-client').innerHTML = optionsActives(D.clients, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
+    $('b-client').value = m ? m.client : '';
+    $('b-lieu').value = m ? m.lieu : '';
+    $('b-parcelle').innerHTML = '<option value="">Choisir la parcelle</option>' + D.parcelles.liste.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('');
+    $('b-lignes').innerHTML = ''; ligneBon(m ? m.prestation : '');
+    $('b-intrants').innerHTML = '';
+    majSarlBon();
+    $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
+    $('dlg-bon').showModal();
+    (m && m.chauffeur ? $('b-lignes').querySelector('.e-qte') : $('b-chauffeur')).focus();
+  }
+  function erreurBon(t) { $('b-erreur').textContent = t; $('b-erreur').hidden = false; }
+  $('b-client').onchange = majSarlBon;
+  $('b-ajout-ligne').onclick = function () { ligneBon(''); };
+  $('b-ajout-intrant').onclick = intrantBon;
+  $('b-fermer').onclick = function () { $('dlg-bon').close(); };
+  $('form-bon').addEventListener('input', function () { $('b-erreur').hidden = true; });
+  $('form-bon').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var sarl = $('b-client').value === D.codeClientSarl;
+    var bon = {
+      idEnvoi: idEnvoiBon, idMission: bonMission ? bonMission.id : '', chauffeur: $('b-chauffeur').value,
+      date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
+      parcelle: sarl ? $('b-parcelle').value : '', heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
+      lignes: Array.prototype.map.call($('b-lignes').children, function (d) { return { code: d.querySelector('.e-code').value, quantite: d.querySelector('.e-qte').value.trim() }; }),
+      intrants: !sarl ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
+        return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
+      }).filter(function (x) { return x.produit || x.dose || x.unite; })
+    };
+    if (!bon.chauffeur) return erreurBon('Choisissez le chauffeur qui a fait le travail.');
+    if (!bon.date) return erreurBon("Indiquez la date de l'intervention.");
+    if (!bon.client) return erreurBon('Choisissez le client.');
+    if (sarl && !bon.parcelle) return erreurBon('Choisissez la parcelle.');
+    if (!bon.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
+    for (var i = 0; i < bon.lignes.length; i++) {
+      if (!bon.lignes[i].code) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
+      if (!(nombre(bon.lignes[i].quantite) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
+    }
+    $('b-enregistrer').disabled = true; occupe++;
+    appel('bureauSaisirBon', { bon: bon })
+      .then(function (r) { occupe--; $('dlg-bon').close(); toast('Bon ' + r.numero + ' enregistré'); return charger(true); })
+      .catch(function (err) { occupe--; $('b-enregistrer').disabled = false; erreurBon(err.message); });
+  });
+  $('f-saisir-bon').onclick = function () { var m = enCours; $('fiche').close(); ouvrirBon(m); };
+  $('nouveau-bon').onclick = function () { if (D) ouvrirBon(null); };
+
   // ------------------------------------------------------------ Barre du haut
   function semaine(n) { if (D) { debut = decaler(D.lundi, n); charger(false); } }
   $('prec').onclick = function () { semaine(-7); };
@@ -533,7 +686,7 @@ textarea{min-height:64px;resize:vertical}
 
   // Mise à jour automatique toutes les 2 minutes (bons reçus, missions faites), sauf pendant une saisie
   setInterval(function () {
-    if (D && !occupe && !glisse && !$('fiche').open && document.visibilityState === 'visible') charger(true);
+    if (D && !occupe && !glisse && !$('fiche').open && !$('dlg-bon').open && document.visibilityState === 'visible') charger(true);
   }, 120000);
 
   charger(false);
