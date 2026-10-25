@@ -5,23 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gestion ETA</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#1E5A38">
+<meta name="theme-color" content="#0064AF">
 <link rel="icon" href="icone-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --fond:#E7ECE6; --surface:#FFFFFF; --surface-2:#F3F6F2; --encre:#16231B; --doux:#56655B;
-  --vert:#1E5A38; --sur-vert:#FFFFFF; --vert-pale:#D3E4D8;
-  --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C3CEC5;
+  --fond:#E9EEF3; --surface:#FFFFFF; --surface-2:#F2F5F8; --encre:#132130; --doux:#53636F;
+  --vert:#017F01; --sur-vert:#FFFFFF; --vert-pale:#D5EBD5;
+  --barre:#0064AF; --sur-barre:#FFFFFF; --horizon:#017F01;
+  --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C4CED8;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --fond:#0E1611; --surface:#17231B; --surface-2:#132019; --encre:#E6EEE8; --doux:#9DAFA2;
-    --vert:#73C394; --sur-vert:#0B1A11; --vert-pale:#1F3427;
-    --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#2B3B30;
+    --fond:#0C141C; --surface:#15202A; --surface-2:#111B24; --encre:#E4EBF1; --doux:#98A8B5;
+    --vert:#5DC25D; --sur-vert:#06200A; --vert-pale:#17301A;
+    --barre:#0064AF; --sur-barre:#FFFFFF; --horizon:#2E9E2E;
+    --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#283746;
     color-scheme:dark;
   }
 }
@@ -33,12 +35,14 @@ button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--ambre);outline-offset:1px}
 
-.barre{position:sticky;top:0;z-index:20;background:var(--vert);color:var(--sur-vert);
+.barre{position:sticky;top:0;z-index:20;background:var(--barre);color:var(--sur-barre);border-bottom:5px solid var(--horizon);
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px}
 .barre h1{font-size:19px;margin:0 10px 0 0}
+.barre .logo{width:38px;height:38px;flex:none;display:block;border-radius:50%;box-shadow:0 0 0 2px #FFFFFF}
+
 .onglets{display:flex;gap:4px;flex-wrap:wrap}
 .onglets button{background:transparent;border:0;color:inherit;border-radius:8px;min-height:36px;padding:4px 12px;font-weight:700;opacity:.8}
-.onglets button[aria-selected="true"]{background:var(--sur-vert);color:var(--vert);opacity:1}
+.onglets button[aria-selected="true"]{background:var(--sur-barre);color:var(--barre);opacity:1}
 .onglets .compte{display:inline-block;min-width:22px;padding:0 6px;margin-left:4px;border-radius:11px;background:var(--ambre);color:#2A1E05;font-size:12px;line-height:20px}
 .espace{flex:1}
 .etat{font-size:13px;opacity:.85}
@@ -128,6 +132,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
 </head>
 <body>
 <header class="barre">
+  <img class="logo" src="logo.png" alt="ETA Oillic" width="36" height="36">
   <h1>Gestion ETA</h1>
   <nav class="onglets" role="tablist">
     <button type="button" role="tab" data-onglet="afacturer" aria-selected="true">À facturer<span class="compte" id="compte">0</span></button>

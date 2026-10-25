@@ -5,25 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planning ETA</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#1E5A38">
+<meta name="theme-color" content="#0064AF">
 <link rel="icon" href="icone-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --fond:#E7ECE6; --surface:#FFFFFF; --surface-2:#F3F6F2; --encre:#16231B; --doux:#56655B;
-  --vert:#1E5A38; --sur-vert:#FFFFFF; --vert-pale:#D3E4D8;
-  --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C3CEC5;
-  --bleu:#2F5D8A; --bleu-pale:#DCE7F2;
+  --fond:#E9EEF3; --surface:#FFFFFF; --surface-2:#F2F5F8; --encre:#132130; --doux:#53636F;
+  --vert:#017F01; --sur-vert:#FFFFFF; --vert-pale:#D5EBD5;
+  --barre:#0064AF; --sur-barre:#FFFFFF; --horizon:#017F01;
+  --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C4CED8;
+  --bleu:#0064AF; --bleu-pale:#D7E7F5;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --fond:#0E1611; --surface:#17231B; --surface-2:#132019; --encre:#E6EEE8; --doux:#9DAFA2;
-    --vert:#73C394; --sur-vert:#0B1A11; --vert-pale:#1F3427;
-    --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#2B3B30;
-    --bleu:#8DB4E2; --bleu-pale:#1B2A3A;
+    --fond:#0C141C; --surface:#15202A; --surface-2:#111B24; --encre:#E4EBF1; --doux:#98A8B5;
+    --vert:#5DC25D; --sur-vert:#06200A; --vert-pale:#17301A;
+    --barre:#0064AF; --sur-barre:#FFFFFF; --horizon:#2E9E2E;
+    --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#283746;
+    --bleu:#7DB4EA; --bleu-pale:#16283A;
     color-scheme:dark;
   }
 }
@@ -36,9 +38,11 @@ button{cursor:pointer}
 :focus-visible{outline:3px solid var(--ambre);outline-offset:1px}
 
 /* Barre du haut */
-.barre{position:sticky;top:0;z-index:20;background:var(--vert);color:var(--sur-vert);
+.barre{position:sticky;top:0;z-index:20;background:var(--barre);color:var(--sur-barre);border-bottom:5px solid var(--horizon);
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px}
 .barre h1{font-size:19px;margin:0 12px 0 0}
+.barre .logo{width:38px;height:38px;flex:none;display:block;border-radius:50%;box-shadow:0 0 0 2px #FFFFFF}
+
 .nav{display:flex;align-items:center;gap:6px}
 .nav button,.barre .clair{background:transparent;border:1.5px solid currentColor;color:inherit;border-radius:8px;
   min-height:36px;padding:4px 12px;font-weight:700}
@@ -46,7 +50,7 @@ button{cursor:pointer}
 .barre a.clair{text-decoration:none;display:inline-flex;align-items:center}
 .semaine{font-weight:700;min-width:250px;text-align:center}
 .espace{flex:1}
-.barre .action{background:var(--sur-vert);color:var(--vert);border:0;border-radius:8px;min-height:36px;padding:4px 14px;font-weight:700}
+.barre .action{background:var(--sur-barre);color:var(--barre);border:0;border-radius:8px;min-height:36px;padding:4px 14px;font-weight:700}
 .etat{font-size:13px;opacity:.85;min-width:110px;text-align:right}
 
 main{padding:14px 16px 40px}
@@ -144,6 +148,7 @@ textarea{min-height:64px;resize:vertical}
 </head>
 <body>
 <header class="barre">
+  <img class="logo" src="logo.png" alt="ETA Oillic" width="36" height="36">
   <h1>Planning ETA</h1>
   <div class="nav">
     <button type="button" class="fleche" id="prec" title="Semaine précédente" aria-label="Semaine précédente">‹</button>
@@ -388,6 +393,14 @@ textarea{min-height:64px;resize:vertical}
       + '<span class="bon">✓ ' + esc(b.numero) + ' (sans mission)</span></button>';
   }
 
+  // Une mission en attente n'apparaît qu'à partir de la semaine qui contient sa date « à partir du »
+  function visibleCetteSemaine(m, dim) { return !m.aPartirDu || m.aPartirDu <= dim; }
+  function avertirSiMasquee(m) {
+    if (m && !m.datePrevue && !visibleCetteSemaine(m, decaler(D.lundi, 6))) {
+      toast('Mission ' + m.id + ' en attente : elle apparaîtra à partir de la semaine du ' + court(m.aPartirDu) + '.');
+    }
+  }
+
   function trierAttente(a, b) {
     return (a.aPartirDu || '0000').localeCompare(b.aPartirDu || '0000') || a.clientNom.localeCompare(b.clientNom, 'fr');
   }
@@ -411,7 +424,8 @@ textarea{min-height:64px;resize:vertical}
     lignes.forEach(function (l) {
       h += '<div class="nom">' + esc(l.nom) + (l.note ? '<small>' + esc(l.note) + '</small>' : '') + '</div>';
       var attente = D.missions.filter(function (m) {
-        return !m.datePrevue && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
+        return !m.datePrevue && visibleCetteSemaine(m, dim)
+          && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
       }).sort(trierAttente);
       h += '<div class="case attente" data-chauffeur="' + esc(l.code) + '" data-date="">' + attente.map(carte).join('') + '</div>';
       js.forEach(function (j, i) {
@@ -467,7 +481,7 @@ textarea{min-height:64px;resize:vertical}
     nouvelle.statut = date ? 'Planifiée' : 'À planifier';
     dessiner();
     var el = document.querySelector('.carte[data-id="' + id + '"]'); if (el) el.classList.add('envoi');
-    enregistrer(nouvelle, ancienne).catch(function () {});
+    enregistrer(nouvelle, ancienne).then(avertirSiMasquee).catch(function () {});
   }
 
   // ------------------------------------------------------------ Glisser-déposer
@@ -570,6 +584,7 @@ textarea{min-height:64px;resize:vertical}
       .then(function (r) {
         $('f-enregistrer').disabled = false; $('fiche').close();
         toast((enCours ? 'Mission ' : 'Mission créée : ') + r.id + (r.datePrevue ? ' planifiée le ' + court(r.datePrevue) : ' en attente'));
+        avertirSiMasquee(r);
         if (r.datePrevue && (r.datePrevue < D.lundi || r.datePrevue > decaler(D.lundi, 6))) {
           toast('Mission ' + r.id + ' planifiée le ' + court(r.datePrevue) + ' : hors de la semaine affichée.');
           D.missions = D.missions.filter(function (x) { return x.id !== r.id; }); dessiner();
