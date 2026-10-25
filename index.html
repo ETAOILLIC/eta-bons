@@ -374,7 +374,7 @@ fieldset .secondaire{margin-top:12px}
   function majLignes() {
     var ls = $('lignes').querySelectorAll('.ligne');
     Array.prototype.forEach.call(ls, function (l) { l.querySelector('.retirer').hidden = ls.length === 1; });
-    $('btn-ligne').hidden = ls.length >= 10;
+    $('btn-ligne').hidden = ls.length >= (estSarl() ? 3 : 10); // SARL : 3 prestations (feuille d'échange)
   }
 
   function ajouterIntrant() {
@@ -392,11 +392,11 @@ fieldset .secondaire{margin-top:12px}
     div.querySelector('.i-produit').focus();
   }
   function majIntrants() {
-    $('btn-intrant').hidden = $('intrants').querySelectorAll('.intrant').length >= 5;
+    $('btn-intrant').hidden = $('intrants').querySelectorAll('.intrant').length >= 3;
   }
 
   function estSarl() { return !!$('f-client').value && $('f-client').value === D.codeClientSarl; }
-  function majSarl() { $('bloc-sarl').hidden = !estSarl(); }
+  function majSarl() { $('bloc-sarl').hidden = !estSarl(); majLignes(); }
 
   function collecter() {
     var sarl = estSarl();

@@ -16,6 +16,7 @@
   --vert:#017F01; --sur-vert:#FFFFFF; --vert-pale:#D5EBD5;
   --barre:#0064AF; --sur-barre:#FFFFFF; --horizon:#017F01;
   --ambre:#F0A92B; --ambre-pale:#FCEFD5; --rouge:#A8231B; --rouge-pale:#F8DEDB; --trait:#C4CED8;
+  --bleu:#0064AF; --bleu-pale:#D7E7F5;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
@@ -24,6 +25,7 @@
     --vert:#5DC25D; --sur-vert:#06200A; --vert-pale:#17301A;
     --barre:#0064AF; --sur-barre:#FFFFFF; --horizon:#2E9E2E;
     --ambre:#F0A92B; --ambre-pale:#3A2E14; --rouge:#FF8F86; --rouge-pale:#3A1A18; --trait:#283746;
+    --bleu:#7DB4EA; --bleu-pale:#16283A;
     color-scheme:dark;
   }
 }
@@ -89,6 +91,17 @@ table.liste .nb{text-align:right;font-variant-numeric:tabular-nums;white-space:n
 .principal:disabled{opacity:.5}
 .pastille{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;font-weight:700;background:var(--vert-pale)}
 .pastille.annule{background:var(--rouge-pale);color:var(--rouge)}
+.pastille.facturer{background:var(--ambre-pale)}
+/* Onglet Trois Étangs : état du bon dans la feuille d'échange */
+.etat-sarl{display:inline-block;padding:1px 9px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap}
+.etat-sarl.agir{background:var(--ambre);color:#2A1E05}
+.etat-sarl.envoye{background:var(--bleu-pale);color:var(--bleu)}
+.etat-sarl.importe{background:var(--vert-pale);color:var(--vert)}
+.etat-sarl.alerte{background:var(--rouge);color:var(--surface)}
+.msg-sarl{display:block;font-size:12px;color:var(--doux);margin-top:3px;max-width:260px}
+tr.alerte-sarl td{background:var(--rouge-pale)}
+tr.alerte-sarl .msg-sarl{color:var(--rouge);font-weight:700}
+.note-facture{font-size:12px;color:var(--doux)}
 .inactif td{color:var(--doux)}
 tr.cliquable{cursor:pointer}
 tr.cliquable:hover td{background:var(--surface-2)}
@@ -137,6 +150,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
   <nav class="onglets" role="tablist">
     <button type="button" role="tab" data-onglet="afacturer" aria-selected="true">À facturer<span class="compte" id="compte">0</span></button>
     <button type="button" role="tab" data-onglet="factures">Facturés</button>
+    <button type="button" role="tab" data-onglet="sarl">Trois Étangs<span class="compte" id="compte-sarl" hidden>0</span></button>
     <button type="button" role="tab" data-onglet="client">Clients</button>
     <button type="button" role="tab" data-onglet="prestation">Prestations</button>
     <button type="button" role="tab" data-onglet="chauffeur">Chauffeurs</button>
@@ -173,6 +187,27 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
       <thead><tr><th>N° bon</th><th>Date</th><th>Client</th><th>Chauffeur</th><th>Prestations</th><th>Statut</th><th>Pièce EBP</th><th>Facturé le</th><th></th></tr></thead>
       <tbody id="histo"></tbody>
     </table></div></div>
+  </section>
+
+  <section id="vue-sarl" hidden>
+    <div class="outils">
+      <label>Afficher<select id="filtre-sarl">
+        <option value="traiter">À traiter (à envoyer, à mettre à jour, à retirer, alertes)</option>
+        <option value="tous">Tous les bons de la SARL</option>
+      </select></label>
+      <span class="resume" id="resume-sarl"></span>
+    </div>
+    <div class="alerte" id="alerte-sarl" hidden></div>
+    <div class="client" id="bloc-sarl">
+      <div class="client-tete"><h2>SARL des Trois Étangs</h2><span class="periode">Bons transmis à l'exploitation par la feuille d'échange</span></div>
+      <div class="bons"><table class="liste">
+        <thead><tr><th><input type="checkbox" id="tout-sarl" aria-label="Tout sélectionner"></th><th>N° bon</th><th>Date</th><th>Chauffeur</th><th>Parcelle</th><th>Prestations et intrants</th><th class="nb">Heures</th><th>Facturation</th><th>Feuille d'échange</th><th></th></tr></thead>
+        <tbody id="liste-sarl"></tbody>
+      </table></div>
+      <div class="pied-client">
+        <button type="button" class="principal" id="envoyer-sarl" disabled>Envoyer à l'exploitation</button>
+      </div>
+    </div>
   </section>
 
   <section id="vue-ref" hidden>
@@ -250,7 +285,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     else JETON = localStorage.getItem(CLE) || '';
   } catch (e) {}
 
-  var D = null, onglet = 'afacturer', decoches = {}, bonOuvert = null, ficheOuverte = null, occupe = 0;
+  var D = null, onglet = 'afacturer', decoches = {}, decochesSarl = {}, bonOuvert = null, ficheOuverte = null, occupe = 0;
 
   var FICHES = {
     client: { titre: 'Clients', un: 'client', champs: [
@@ -333,9 +368,13 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     });
     $('vue-afacturer').hidden = onglet !== 'afacturer';
     $('vue-factures').hidden = onglet !== 'factures';
+    $('vue-sarl').hidden = onglet !== 'sarl';
     $('vue-ref').hidden = !FICHES[onglet];
+    var aTraiter = D.sarl.liste.filter(function (e) { return e.action || e.alerte; }).length;
+    $('compte-sarl').textContent = aTraiter; $('compte-sarl').hidden = !aTraiter;
     if (onglet === 'afacturer') dessinerAFacturer();
     else if (onglet === 'factures') dessinerHistorique();
+    else if (onglet === 'sarl') dessinerSarl();
     else dessinerReferentiel();
   }
   Array.prototype.forEach.call(document.querySelectorAll('.onglets button'), function (b) {
@@ -445,7 +484,10 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
   }
 
   // ------------------------------------------------------------ Correction d'un bon
-  function bonParNumero(n) { return D.aFacturer.filter(function (b) { return b.numero === n; })[0]; }
+  function bonParNumero(n) {
+    return D.aFacturer.filter(function (b) { return b.numero === n; })[0]
+      || (D.sarl.liste.filter(function (e) { return e.numero === n; })[0] || {}).bon;
+  }
   function opts(liste, valeur, vide, texte) {
     var h = '<option value="">' + esc(vide) + '</option>', trouve = !valeur;
     liste.forEach(function (x) {
@@ -530,7 +572,8 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     appel('gestionModifierBon', { bon: donnees })
       .then(function (r) {
         occupe--; $('dlg-bon').close();
-        toast(r.modifie ? 'Bon ' + r.numero + ' corrigé (' + r.elements.join(', ').toLowerCase() + ')' : 'Aucune modification');
+        toast(r.modifie ? 'Bon ' + r.numero + ' corrigé (' + r.elements.join(', ').toLowerCase() + ')'
+          + (r.envoyeSarl ? '. Déjà envoyé à l\'exploitation : mettez-le à jour depuis l\'onglet Trois Étangs.' : '') : 'Aucune modification');
         return charger(true);
       })
       .catch(function (err) { occupe--; $('b-enregistrer').disabled = false; erreurBon(err.message); });
@@ -544,8 +587,89 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     if (!motif.trim()) return erreurBon('Indiquez le motif de l\'annulation.');
     occupe++;
     appel('gestionAnnulerBon', { numero: b.numero, motif: motif.trim() })
-      .then(function () { occupe--; $('dlg-bon').close(); toast('Bon ' + b.numero + ' annulé'); return charger(true); })
+      .then(function () {
+        occupe--; $('dlg-bon').close();
+        toast('Bon ' + b.numero + ' annulé' + (b.envoyeSarl ? '. Déjà envoyé à l\'exploitation : retirez-le depuis l\'onglet Trois Étangs.' : ''));
+        return charger(true);
+      })
       .catch(function (err) { occupe--; erreurBon(err.message); });
+  };
+
+  // ------------------------------------------------------------ Trois Étangs (feuille d'échange)
+  var ORDRE_SARL = { 'À envoyer': 1, 'À mettre à jour': 2, 'À retirer': 3, 'À corriger': 4, 'Modifié après import': 5,
+    'Retiré après import': 6, 'Refusé par l\'exploitation': 7, 'Envoyé': 8, 'Importé': 9 };
+  function classeSarl(e) { return e.action ? 'agir' : e.alerte ? 'alerte' : e.etat === 'Importé' ? 'importe' : 'envoye'; }
+  function listeSarl() {
+    var tous = $('filtre-sarl').value === 'tous';
+    return D.sarl.liste.filter(function (e) { return tous || e.action || e.alerte; })
+      .sort(function (a, b) { return (ORDRE_SARL[a.etat] || 99) - (ORDRE_SARL[b.etat] || 99) || b.bon.date.localeCompare(a.bon.date) || b.numero.localeCompare(a.numero); });
+  }
+  function choisisSarl() { return D.sarl.liste.filter(function (e) { return e.action && !decochesSarl[e.numero]; }); }
+
+  function dessinerSarl() {
+    $('alerte-sarl').hidden = !D.sarl.erreur;
+    $('alerte-sarl').textContent = D.sarl.erreur ? 'Feuille d\'échange : ' + D.sarl.erreur : '';
+    $('bloc-sarl').hidden = !!D.sarl.erreur;
+    var l = listeSarl();
+    var cpt = { agir: 0, alerte: 0 };
+    D.sarl.liste.forEach(function (e) { if (e.action) cpt.agir++; else if (e.alerte) cpt.alerte++; });
+    $('resume-sarl').textContent = cpt.agir + ' bon' + (cpt.agir > 1 ? 's' : '') + ' à transmettre'
+      + (cpt.alerte ? ', ' + cpt.alerte + ' à vérifier' : '') + ', ' + D.sarl.liste.length + ' au total';
+    $('liste-sarl').innerHTML = l.length ? l.map(function (e) {
+      var b = e.bon;
+      var intr = b.intrants.length ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
+      var coche = e.action ? '<input type="checkbox" data-sarl="' + esc(e.numero) + '"' + (decochesSarl[e.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(e.numero) + '">' : '';
+      var facture = b.statut === 'À facturer' ? '<span class="pastille facturer">À facturer</span>'
+        : '<span class="pastille' + (b.statut === 'Annulé' ? ' annule' : '') + '">' + esc(b.statut) + '</span>';
+      var corriger = b.statut === 'À facturer' ? '<button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button>'
+        : b.statut === 'Facturé' ? '<span class="note-facture" title="Onglet Facturés : « Remettre à facturer » pour pouvoir le corriger">facturé</span>' : '';
+      var info = e.etat === 'Importé' && e.traiteLe ? 'Importé le ' + court(e.traiteLe) + (e.ref ? ' (' + e.ref + ')' : '') : e.message;
+      return '<tr class="' + (e.alerte ? 'alerte-sarl' : '') + (e.action && decochesSarl[e.numero] ? ' decoche' : '') + '">'
+        + '<td>' + coche + '</td>'
+        + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + '</td>'
+        + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
+        + '<td>' + esc(b.parcelle || '') + (b.lieu ? '<br><small>' + esc(b.lieu) + '</small>' : '') + '</td>'
+        + '<td>' + resume(b.lignes) + intr + '</td>'
+        + '<td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td>'
+        + '<td>' + facture + '</td>'
+        + '<td><span class="etat-sarl ' + classeSarl(e) + '">' + esc(e.etat) + '</span>' + (info ? '<span class="msg-sarl">' + esc(info) + '</span>' : '') + '</td>'
+        + '<td>' + corriger + '</td></tr>';
+    }).join('') : '<tr><td colspan="10">' + ($('filtre-sarl').value === 'tous' ? 'Aucun bon pour la SARL.' : 'Rien à transmettre : tous les bons de la SARL sont à jour dans la feuille d\'échange.') + '</td></tr>';
+    var n = choisisSarl().length, possibles = D.sarl.liste.filter(function (e) { return e.action; }).length;
+    $('tout-sarl').checked = possibles > 0 && n === possibles; $('tout-sarl').disabled = !possibles;
+    $('envoyer-sarl').disabled = !n;
+    $('envoyer-sarl').textContent = 'Envoyer à l\'exploitation' + (n ? ' (' + n + ' bon' + (n > 1 ? 's' : '') + ')' : '');
+  }
+  $('filtre-sarl').onchange = dessinerSarl;
+  $('tout-sarl').onchange = function () {
+    var on = $('tout-sarl').checked;
+    D.sarl.liste.forEach(function (e) { if (e.action) { if (on) delete decochesSarl[e.numero]; else decochesSarl[e.numero] = true; } });
+    dessinerSarl();
+  };
+  $('liste-sarl').addEventListener('change', function (e) {
+    var n = e.target.getAttribute('data-sarl'); if (!n) return;
+    if (e.target.checked) delete decochesSarl[n]; else decochesSarl[n] = true;
+    dessinerSarl();
+  });
+  $('liste-sarl').addEventListener('click', function (e) {
+    var n = e.target.getAttribute('data-corriger'); if (n) ouvrirBon(n);
+  });
+  $('envoyer-sarl').onclick = function () {
+    var l = choisisSarl(); if (!l.length) return;
+    var compte = { envoyer: 0, maj: 0, retirer: 0 };
+    l.forEach(function (e) { compte[e.action]++; });
+    var detail = [compte.envoyer ? compte.envoyer + ' à envoyer' : '', compte.maj ? compte.maj + ' à mettre à jour' : '', compte.retirer ? compte.retirer + ' à retirer' : '']
+      .filter(Boolean).join(', ');
+    if (!confirm('Transmettre à la feuille d\'échange de la SARL : ' + detail + ' ?')) return;
+    var bouton = $('envoyer-sarl'); bouton.disabled = true; occupe++;
+    appel('gestionEnvoyerSarl', { numeros: l.map(function (e) { return e.numero; }) })
+      .then(function (r) {
+        occupe--;
+        toast([r.envoyes ? r.envoyes + ' envoyé(s)' : '', r.misAJour ? r.misAJour + ' mis à jour' : '', r.retires ? r.retires + ' retiré(s)' : ''].filter(Boolean).join(', ') + ' dans la feuille d\'échange');
+        decochesSarl = {};
+        return charger(true);
+      })
+      .catch(function (err) { occupe--; bouton.disabled = false; toast(err.message, true); charger(true); });
   };
 
   // ------------------------------------------------------------ Historique
