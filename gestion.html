@@ -671,7 +671,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
     return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   }
   /** Fiche phyto PDF du bon, ouverte dans un nouvel onglet (à imprimer ou envoyer au client). */
-  function ouvrirFiche(numero) {
+  function ouvrirFichePhyto(numero) {
     var fenetre = window.open('', '_blank');
     if (fenetre) fenetre.document.write('<p style="font:16px sans-serif;padding:20px">Préparation de la fiche…</p>');
     appel('gestionFichePhyto', { numero: numero }).then(function (r) {
@@ -681,10 +681,10 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
       if (fenetre) fenetre.location.href = url; else window.location.href = url;
     }).catch(function (e) { if (fenetre) fenetre.close(); toast(e.message, true); });
   }
-  $('b-fiche').onclick = function () { ouvrirFiche(bonOuvert.numero); };
+  $('b-fiche').onclick = function () { ouvrirFichePhyto(bonOuvert.numero); };
   document.addEventListener('click', function (e) {
     var t = e.target.closest ? e.target.closest('[data-fiche]') : null;
-    if (t) ouvrirFiche(t.getAttribute('data-fiche'));
+    if (t) ouvrirFichePhyto(t.getAttribute('data-fiche'));
   });
   function trombone(b) {
     var manque = b.phyto && b.phyto.manques.length;
