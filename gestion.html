@@ -675,10 +675,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
     var fenetre = window.open('', '_blank');
     if (fenetre) fenetre.document.write('<p style="font:16px sans-serif;padding:20px">Préparation de la fiche…</p>');
     appel('gestionFichePhyto', { numero: numero }).then(function (r) {
-      var octets = atob(r.donnees), t = new Uint8Array(octets.length);
-      for (var i = 0; i < octets.length; i++) t[i] = octets.charCodeAt(i);
-      var url = URL.createObjectURL(new Blob([t], { type: 'application/pdf' }));
-      if (fenetre) fenetre.location.href = url; else window.location.href = url;
+      afficherFichier(fenetre, r.nom, 'application/pdf', r.donnees);
     }).catch(function (e) { if (fenetre) fenetre.close(); toast(e.message, true); });
   }
   $('b-fiche').onclick = function () { ouvrirFichePhyto(bonOuvert.numero); };
@@ -721,14 +718,36 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
     $('b-pj-ajout').hidden = l.length >= PJ_MAX;
   }
   /** Ouvre une pièce dans un nouvel onglet (le fichier Drive n'est partagé avec personne : il passe par l'application). */
+  /**
+   * Affiche un fichier (PDF ou photo) dans l'onglet déjà ouvert, avec un bouton « Télécharger »
+   * qui l'enregistre sous son vrai nom (sinon le navigateur lui donne un nom technique).
+   */
+  function afficherFichier(fenetre, nom, type, donnees) {
+    var octets = atob(donnees), t = new Uint8Array(octets.length);
+    for (var i = 0; i < octets.length; i++) t[i] = octets.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([t], { type: type }));
+    if (!fenetre) { // fenêtres bloquées : téléchargement direct
+      var a = document.createElement('a'); a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
+    var image = /^image\//.test(type);
+    fenetre.document.open();
+    fenetre.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>' + esc(nom) + '</title>'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+      + '<style>html,body{margin:0;height:100%}body{display:flex;flex-direction:column;font:15px system-ui,sans-serif;background:#525659}'
+      + 'header{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:#0064AF;color:#fff;border-bottom:4px solid #017F01}'
+      + 'header b{flex:1}header a{background:#fff;color:#0064AF;font-weight:700;padding:7px 14px;border-radius:8px;text-decoration:none}'
+      + 'iframe{flex:1;border:0;width:100%;background:#fff}.img{flex:1;overflow:auto;text-align:center}.img img{max-width:100%}</style></head><body>'
+      + '<header><b>' + esc(nom) + '</b><a download="' + esc(nom) + '" href="' + url + '">Télécharger</a></header>'
+      + (image ? '<div class="img"><img src="' + url + '" alt="' + esc(nom) + '"></div>' : '<iframe src="' + url + '" title="' + esc(nom) + '"></iframe>')
+      + '</body></html>');
+    fenetre.document.close();
+  }
   function ouvrirPiece(id) {
     var fenetre = window.open('', '_blank');
     if (fenetre) fenetre.document.write('<p style="font:16px sans-serif;padding:20px">Chargement de la pièce jointe…</p>');
     appel('gestionLirePiece', { id: id }).then(function (r) {
-      var octets = atob(r.donnees), t = new Uint8Array(octets.length);
-      for (var i = 0; i < octets.length; i++) t[i] = octets.charCodeAt(i);
-      var url = URL.createObjectURL(new Blob([t], { type: r.type }));
-      if (fenetre) fenetre.location.href = url; else window.location.href = url;
+      afficherFichier(fenetre, r.nom, r.type, r.donnees);
     }).catch(function (e) { if (fenetre) fenetre.close(); toast(e.message, true); });
   }
   function preparerPiece(f) {
