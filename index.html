@@ -97,6 +97,19 @@ fieldset .secondaire{margin-top:12px}
 .rappel{background:var(--vert-pale);border-radius:10px;padding:12px 14px;margin-bottom:18px}
 .erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;font-weight:700;margin:0 0 12px}
 .note{font-weight:400;color:var(--rouge);font-size:16px}
+/* Pièces jointes */
+.pj-aide{margin:2px 0 6px;color:var(--doux);font-size:15px}
+.pj-liste{list-style:none;margin:0;padding:0}
+.pj-liste li{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px dashed var(--trait)}
+.pj-vignette{width:56px;height:56px;flex:none;border-radius:8px;object-fit:cover;background:var(--vert-pale);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--vert)}
+.pj-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pj-nom small{display:block;color:var(--doux);font-size:14px;white-space:normal}
+.pj-retirer{min-width:48px;min-height:48px;border:0;background:transparent;color:var(--rouge);font-size:26px;line-height:1}
+label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12px 0 0;text-align:center;cursor:pointer}
+.ok-pj{text-align:left;background:var(--surface);border:1px solid var(--trait);border-radius:10px;padding:10px 14px;margin:0 0 20px}
+.ok-pj p{margin:4px 0;font-weight:700}
+.ok-pj li small{color:var(--rouge)}
 .pied{position:sticky;bottom:0;background:var(--fond);padding:12px 0 calc(12px + env(safe-area-inset-bottom,0px));
   border-top:1px solid var(--trait)}
 
@@ -159,12 +172,12 @@ fieldset .secondaire{margin-top:12px}
 
       <fieldset id="bloc-sarl" hidden>
         <legend>SARL des Trois Étangs</legend>
-        <label>Parcelle (îlot PAC)
-          <select id="f-parcelle"></select>
-          <span class="note" id="parcelles-erreur" hidden></span>
-        </label>
+        <p class="pj-aide" style="margin-bottom:0">Parcelles travaillées : indiquez la surface de chacune s'il y en a plusieurs, les quantités et les heures seront réparties.</p>
+        <span class="note" id="parcelles-erreur" hidden></span>
+        <div id="f-parcelles"></div>
         <div id="intrants"></div>
         <button type="button" class="secondaire" id="btn-intrant">Ajouter un intrant</button>
+        <p class="pj-aide" id="intrants-phyto" hidden>Les produits du traitement phytosanitaire sont transmis à l'exploitation.</p>
       </fieldset>
 
       <fieldset>
@@ -173,12 +186,27 @@ fieldset .secondaire{margin-top:12px}
         <button type="button" class="secondaire" id="btn-ligne">Ajouter une prestation</button>
       </fieldset>
 
+      <fieldset id="bloc-phyto" hidden>
+        <legend>Traitement phytosanitaire</legend>
+        <p class="pj-aide">Obligatoire pour le registre. Une culture par bon, une ou plusieurs parcelles. Relevez la position depuis chaque parcelle ; sinon le bureau la placera sur la carte.</p>
+        <div id="phyto"></div>
+      </fieldset>
+
       <label>Heures de travail
         <input type="text" inputmode="decimal" id="f-heures" autocomplete="off" placeholder="Facultatif">
       </label>
       <label>Remarques
         <textarea id="f-remarques" rows="3" maxlength="1000" placeholder="Facultatif"></textarea>
       </label>
+
+      <fieldset>
+        <legend>Photos et documents</legend>
+        <p class="pj-aide">Ticket de pesée, bon papier… Facultatif, 5 au maximum.</p>
+        <ul class="pj-liste" id="pj-liste"></ul>
+        <label class="secondaire pj-ajout" id="pj-ajout">Ajouter une photo ou un PDF
+          <input type="file" id="pj-fichier" accept="image/*,application/pdf" multiple hidden>
+        </label>
+      </fieldset>
 
       <div class="pied">
         <p class="erreur" id="erreur" role="alert" hidden></p>
@@ -192,6 +220,7 @@ fieldset .secondaire{margin-top:12px}
     <div class="coche" aria-hidden="true">✓</div>
     <h1>Bon envoyé</h1>
     <p class="numero" id="ok-numero"></p>
+    <div class="ok-pj" id="ok-pj" hidden></div>
     <button type="button" class="principal" id="btn-ok">Retour à mes missions</button>
     <button type="button" class="secondaire" id="btn-ok-nouveau">Faire un autre bon</button>
   </section>
@@ -199,6 +228,7 @@ fieldset .secondaire{margin-top:12px}
 
 <div class="chargement" id="chargement">Chargement…</div>
 
+<script src="phyto.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (déploiement « Application Web », se termine par /exec)
@@ -228,6 +258,7 @@ fieldset .secondaire{margin-top:12px}
       });
   }
   var D = null, mission = null, idEnvoi = null, modifie = false, envoiEnCours = false;
+  var pieces = [], lotPieces = null; // pièces du bon en cours de saisie / du dernier bon envoyé
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -325,6 +356,8 @@ fieldset .secondaire{margin-top:12px}
     idEnvoi = uuid();
     modifie = false;
     $('form-bon').reset();
+    pieces = []; dessinerPieces();
+    blocPhyto.remplir(null);
     $('titre-bon').textContent = m ? 'Bon de la mission' : 'Nouveau bon';
     $('rappel').hidden = !m;
     if (m) {
@@ -338,9 +371,7 @@ fieldset .secondaire{margin-top:12px}
     }).join('');
     $('f-client').value = m ? m.client : '';
     $('f-lieu').value = m ? m.lieu : '';
-    $('f-parcelle').innerHTML = '<option value="">Choisir la parcelle</option>' + D.parcelles.liste.map(function (p) {
-      return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>';
-    }).join('');
+    parcellesSarl.remplir(null);
     $('parcelles-erreur').textContent = D.parcelles.erreur || '';
     $('parcelles-erreur').hidden = !D.parcelles.erreur;
     $('lignes').innerHTML = '';
@@ -371,7 +402,33 @@ fieldset .secondaire{margin-top:12px}
     $('lignes').appendChild(div);
     majLignes();
   }
+  // ------------------------------------------------------------ Traitement phytosanitaire (phyto.js)
+  var blocPhyto = Phyto.monter($('phyto'), { bouton: 'secondaire', gps: true });
+  // Parcelles de la SARL (liste de l'exploitation) ; positions affichées seulement pour un traitement phyto
+  var parcellesSarl = Phyto.parcelles($('f-parcelles'), { bouton: 'secondaire', gps: true,
+    codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
+  function lignePhyto() {
+    return Array.prototype.filter.call($('lignes').querySelectorAll('.ligne'), function (l) {
+      var p = D.prestations.filter(function (x) { return x.code === l.querySelector('.l-presta').value; })[0];
+      return p && p.phyto;
+    })[0];
+  }
+  function estPhyto() { return !!lignePhyto(); }
+  function majPhyto() {
+    var l = lignePhyto(), sarl = estSarl();
+    $('bloc-phyto').hidden = !l;
+    $('intrants').hidden = $('btn-intrant').hidden = !!(l && sarl);
+    $('intrants-phyto').hidden = !(l && sarl);
+    // SARL : les parcelles du bloc SARL servent aussi au traitement phyto
+    blocPhyto.utiliserParcelles(sarl ? parcellesSarl : null);
+    parcellesSarl.afficherPositions(!!l);
+    if (!l) return;
+    var p = D.prestations.filter(function (x) { return x.code === l.querySelector('.l-presta').value; })[0];
+    if (/^ha$/i.test(p.unite)) (sarl ? parcellesSarl : blocPhyto).proposerSurface(nombre(l.querySelector('.l-qte').value));
+  }
+
   function majLignes() {
+    majPhyto();
     var ls = $('lignes').querySelectorAll('.ligne');
     Array.prototype.forEach.call(ls, function (l) { l.querySelector('.retirer').hidden = ls.length === 1; });
     $('btn-ligne').hidden = ls.length >= (estSarl() ? 3 : 10); // SARL : 3 prestations (feuille d'échange)
@@ -406,11 +463,12 @@ fieldset .secondaire{margin-top:12px}
       date: $('f-date').value,
       client: $('f-client').value,
       lieu: $('f-lieu').value.trim(),
-      parcelle: sarl ? $('f-parcelle').value : '',
+      parcelles: sarl ? parcellesSarl.lire() : [],
       lignes: Array.prototype.map.call($('lignes').querySelectorAll('.ligne'), function (l) {
         return { code: l.querySelector('.l-presta').value, quantite: l.querySelector('.l-qte').value.trim() };
       }),
-      intrants: !sarl ? [] : Array.prototype.map.call($('intrants').querySelectorAll('.intrant'), function (x) {
+      phyto: estPhyto() ? blocPhyto.lire() : null,
+      intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('intrants').querySelectorAll('.intrant'), function (x) {
         return { produit: x.querySelector('.i-produit').value.trim(), dose: x.querySelector('.i-dose').value.trim(), unite: x.querySelector('.i-unite').value };
       }).filter(function (x) { return x.produit || x.dose || x.unite; }),
       heures: $('f-heures').value.trim(),
@@ -422,7 +480,7 @@ fieldset .secondaire{margin-top:12px}
     if (!b.date) return "Indiquez la date de l'intervention.";
     if (b.date > D.aujourdhui) return "La date de l'intervention ne peut pas être dans le futur.";
     if (!b.client) return 'Choisissez le client.';
-    if (estSarl() && !b.parcelle) return 'Choisissez la parcelle.';
+    if (estSarl()) { var epa = parcellesSarl.verifier(estPhyto()); if (epa) return epa; }
     for (var i = 0; i < b.lignes.length; i++) {
       if (!b.lignes[i].code) return 'Prestation ' + (i + 1) + ' : choisissez la prestation.';
       if (!(nombre(b.lignes[i].quantite) > 0)) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
@@ -433,6 +491,7 @@ fieldset .secondaire{margin-top:12px}
       if (!(nombre(x.dose) > 0)) return 'Intrant ' + (j + 1) + ' : indiquez la dose.';
       if (!x.unite) return 'Intrant ' + (j + 1) + " : choisissez l'unité.";
     }
+    if (estPhyto()) { var ep = blocPhyto.verifier(); if (ep) return ep; }
     if (b.heures && !(nombre(b.heures) >= 0 && nombre(b.heures) <= 24)) return 'Heures de travail : indiquez un nombre entre 0 et 24.';
     return '';
   }
@@ -450,6 +509,10 @@ fieldset .secondaire{margin-top:12px}
     var b = collecter();
     var err = verifier(b);
     if (err) { montrerErreur(err); return; }
+    if (b.phyto) {
+      var mq = blocPhyto.manques();
+      if (mq.length && !confirm('Il manque ' + mq.join(' et ') + ' : le bureau le complétera. Envoyer le bon quand même ?')) return;
+    }
     $('erreur').hidden = true;
     etatEnvoi(true);
     appel('enregistrer', { bon: b })
@@ -457,14 +520,130 @@ fieldset .secondaire{margin-top:12px}
         etatEnvoi(false);
         modifie = false;
         $('ok-numero').textContent = 'N° ' + r.numero;
+        lotPieces = { numero: r.numero, pieces: pieces };
+        pieces = [];
         vue('ok');
-        charger(true);
+        envoyerPieces(lotPieces).then(function () { charger(true); });
       })
       .catch(function (e) {
         etatEnvoi(false);
         montrerErreur('Bon non enregistré : ' + e.message
           + ' Vous pouvez appuyer à nouveau sur « Envoyer le bon » : il ne sera jamais enregistré deux fois.');
       });
+  }
+
+  // ------------------------------------------------------------ Pièces jointes
+  var PJ_MAX = 5, PJ_COTE = 1600, PJ_PDF_MAX = 10 * 1024 * 1024;
+
+  /** Fichier choisi → pièce prête à l'envoi ; les photos sont réduites (1600 px, JPEG) pour passer sur un réseau faible. */
+  function preparerPiece(f) {
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      if (f.size > PJ_PDF_MAX) return Promise.reject(new Error(f.name + ' : PDF trop lourd (10 Mo au plus).'));
+      return lireBase64(f).then(function (b64) {
+        return { nom: f.name, type: 'application/pdf', donnees: b64, taille: f.size, apercu: '' };
+      });
+    }
+    if (!/^image\//.test(f.type) && !/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)) {
+      return Promise.reject(new Error(f.name + ' : seules les photos et les PDF sont acceptés.'));
+    }
+    return chargerImage(f).then(function (img) {
+      var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, PJ_COTE / Math.max(w, h));
+      var c = document.createElement('canvas');
+      c.width = Math.round(w * k); c.height = Math.round(h * k);
+      var ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      var url = c.toDataURL('image/jpeg', 0.82), b64 = url.split(',')[1];
+      return { nom: f.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg', donnees: b64,
+        taille: Math.round(b64.length * 3 / 4), apercu: url };
+    });
+  }
+  function chargerImage(f) {
+    return new Promise(function (ok, ko) {
+      var u = URL.createObjectURL(f), img = new Image();
+      img.onload = function () { URL.revokeObjectURL(u); ok(img); };
+      img.onerror = function () { URL.revokeObjectURL(u); ko(new Error(f.name + ' : format de photo non reconnu.')); };
+      img.src = u;
+    });
+  }
+  function lireBase64(f) {
+    return new Promise(function (ok, ko) {
+      var r = new FileReader();
+      r.onload = function () { ok(String(r.result).split(',')[1]); };
+      r.onerror = function () { ko(new Error(f.name + ' : fichier illisible.')); };
+      r.readAsDataURL(f);
+    });
+  }
+  function taille(o) { return o < 1048576 ? Math.max(1, Math.round(o / 1024)) + ' Ko' : (o / 1048576).toFixed(1).replace('.', ',') + ' Mo'; }
+  function vignette(p) {
+    return p.apercu ? '<img class="pj-vignette" src="' + p.apercu + '" alt="">' : '<span class="pj-vignette">PDF</span>';
+  }
+
+  function dessinerPieces() {
+    $('pj-liste').innerHTML = pieces.map(function (p, i) {
+      return '<li>' + vignette(p) + '<span class="pj-nom">' + esc(p.nom) + '<small>' + taille(p.taille) + '</small></span>'
+        + '<button type="button" class="pj-retirer" data-pj="' + i + '" aria-label="Retirer ' + esc(p.nom) + '">×</button></li>';
+    }).join('');
+    $('pj-ajout').hidden = pieces.length >= PJ_MAX;
+  }
+  $('pj-fichier').onchange = function () {
+    var fichiers = Array.prototype.slice.call($('pj-fichier').files);
+    $('pj-fichier').value = '';
+    var place = PJ_MAX - pieces.length;
+    if (fichiers.length > place) montrerErreur('5 pièces au maximum : seules les ' + place + ' premières sont ajoutées.');
+    else $('erreur').hidden = true;
+    fichiers.slice(0, place).reduce(function (suite, f) {
+      return suite.then(function () { return preparerPiece(f); })
+        .then(function (p) { p.idEnvoi = uuid(); pieces.push(p); modifie = true; dessinerPieces(); })
+        .catch(function (e) { montrerErreur(e.message); });
+    }, Promise.resolve());
+  };
+  $('pj-liste').onclick = function (e) {
+    var i = e.target.getAttribute('data-pj'); if (i === null) return;
+    pieces.splice(Number(i), 1); dessinerPieces();
+  };
+
+  /** Envoie les pièces du bon une par une ; celles qui échouent peuvent être renvoyées. */
+  function envoyerPieces(lot) {
+    var restantes = lot.pieces.filter(function (p) { return p.etat !== 'ok'; });
+    if (!restantes.length) { afficherLot(lot); return Promise.resolve(); }
+    lot.enCours = true;
+    restantes.forEach(function (p) { p.etat = 'attente'; p.erreur = ''; });
+    afficherLot(lot);
+    return restantes.reduce(function (suite, p) {
+      return suite.then(function () {
+        p.etat = 'envoi'; afficherLot(lot);
+        return appel('ajouterPiece', { numero: lot.numero, piece: { idEnvoi: p.idEnvoi, nom: p.nom, type: p.type, donnees: p.donnees } })
+          .then(function () { p.etat = 'ok'; p.donnees = ''; })
+          .catch(function (e) { p.etat = 'erreur'; p.erreur = e.message; });
+      });
+    }, Promise.resolve()).then(function () { lot.enCours = false; afficherLot(lot); });
+  }
+  function afficherLot(lot) {
+    var bloc = $('ok-pj');
+    if (lotPieces !== lot) return;
+    bloc.hidden = !lot.pieces.length;
+    if (!lot.pieces.length) return;
+    var faites = lot.pieces.filter(function (p) { return p.etat === 'ok'; }).length;
+    var echecs = lot.pieces.filter(function (p) { return p.etat === 'erreur'; }).length;
+    var titre = lot.enCours ? 'Envoi des pièces jointes : ' + faites + ' sur ' + lot.pieces.length + '…'
+      : echecs ? faites + ' pièce(s) jointe(s) envoyée(s) sur ' + lot.pieces.length + '. Le bon est bien enregistré.'
+      : (lot.pieces.length > 1 ? 'Les ' + lot.pieces.length + ' pièces jointes sont envoyées.' : 'La pièce jointe est envoyée.');
+    bloc.innerHTML = '<p>' + esc(titre) + '</p><ul class="pj-liste">' + lot.pieces.map(function (p) {
+      var etat = { ok: '✓', envoi: '…', attente: '', erreur: '⚠' }[p.etat] || '';
+      return '<li>' + vignette(p) + '<span class="pj-nom">' + esc(p.nom) + (p.erreur ? '<small>' + esc(p.erreur) + '</small>' : '') + '</span><b>' + etat + '</b></li>';
+    }).join('') + '</ul>' + (echecs && !lot.enCours ? '<button type="button" class="principal" id="btn-pj-renvoyer">Renvoyer les pièces</button>' : '');
+    var b = $('btn-pj-renvoyer');
+    if (b) b.onclick = function () { envoyerPieces(lot).then(function () { charger(true); }); };
+  }
+  function piecesEnSuspens() {
+    return lotPieces && (lotPieces.enCours || lotPieces.pieces.some(function (p) { return p.etat === 'erreur'; }));
+  }
+  function quitterConfirmation(suite) {
+    if (piecesEnSuspens() && !confirm(lotPieces.enCours
+      ? 'Les pièces jointes sont en cours d\'envoi. Quitter quand même ? L\'envoi continue tant que la page reste ouverte.'
+      : 'Des pièces jointes n\'ont pas pu être envoyées. Quitter sans les renvoyer ? Elles seront perdues.')) return;
+    suite();
   }
 
   // ------------------------------------------------------------ Événements
@@ -474,14 +653,15 @@ fieldset .secondaire{margin-top:12px}
   $('btn-ligne').onclick = function () { ajouterLigne(''); modifie = true; };
   $('btn-intrant').onclick = function () { ajouterIntrant(); modifie = true; };
   $('f-client').onchange = majSarl;
+  $('lignes').addEventListener('change', majPhyto);
   $('form-bon').addEventListener('input', function () { modifie = true; });
   $('form-bon').addEventListener('submit', envoyer);
   $('btn-retour').onclick = function () {
     if (modifie && !confirm('Abandonner ce bon ? Les informations saisies seront perdues.')) return;
     vue('accueil');
   };
-  $('btn-ok').onclick = function () { vue('accueil'); };
-  $('btn-ok-nouveau').onclick = function () { ouvrirBon(null); };
+  $('btn-ok').onclick = function () { quitterConfirmation(function () { vue('accueil'); }); };
+  $('btn-ok-nouveau').onclick = function () { quitterConfirmation(function () { ouvrirBon(null); }); };
 
   charger(false);
 })();

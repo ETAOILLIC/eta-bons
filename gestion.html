@@ -125,6 +125,22 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
 .groupe{grid-column:1/-1;border:1px solid var(--trait);border-radius:9px;padding:8px 12px 12px}
 .groupe.sarl{border:2px solid var(--ambre)}
 .groupe h4{margin:2px 0 6px;font-size:14px}
+.groupe h4 small{font-weight:400;color:var(--doux)}
+/* Pièces jointes */
+.pj-liste{list-style:none;margin:0 0 6px;padding:0}
+.pj-liste li{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--trait);font-size:14px}
+.pj-liste li:last-child{border-bottom:0}
+.pj-type{flex:none;width:40px;text-align:center;font-size:11px;font-weight:700;border-radius:6px;padding:3px 0;background:var(--vert-pale);color:var(--vert)}
+.pj-liste .pj-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pj-liste .pj-nom small{color:var(--doux);margin-left:6px}
+.pj-vide{color:var(--doux);font-size:13px;margin:0 0 6px}
+label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
+.pj-badge{display:inline-block;margin-left:4px;padding:0 6px;border:1px solid var(--trait);border-radius:10px;font-size:11px;font-weight:700;
+  background:var(--surface);color:var(--encre);cursor:pointer}
+.pj-badge:hover{border-color:var(--vert)}
+.pj-badge.manque{background:var(--rouge);color:#fff;border-color:var(--rouge)}
+#alerte-phyto ul{margin:6px 0 0;padding-left:18px;font-weight:400}
+#alerte-phyto li{margin:3px 0}
 .ligne-ed{display:grid;grid-template-columns:1fr 130px 50px 70px;gap:8px;align-items:center;margin-bottom:6px}
 .ligne-ed.intr{grid-template-columns:1fr 110px 120px 70px}
 .ligne-ed input,.ligne-ed select{margin-top:0}
@@ -175,6 +191,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
       <label>Interventions jusqu'au<input type="date" id="filtre-date"></label>
       <span class="resume" id="resume"></span>
     </div>
+    <div class="alerte" id="alerte-phyto" hidden></div>
     <div id="liste-clients"></div>
   </section>
 
@@ -234,7 +251,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
       <label class="large">Parcelle ou lieu<input type="text" id="b-lieu" maxlength="200"></label>
       <div class="groupe sarl" id="b-sarl" hidden>
         <h4>SARL des Trois Étangs</h4>
-        <label>Parcelle (îlot PAC)<select id="b-parcelle"></select></label>
+        <div id="b-parcelles"></div>
         <div id="b-intrants" style="margin-top:10px"></div>
         <button type="button" class="lien-btn" id="b-ajout-intrant">+ Ajouter un intrant</button>
       </div>
@@ -243,14 +260,24 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
         <div id="b-lignes"></div>
         <button type="button" class="lien-btn" id="b-ajout-ligne">+ Ajouter une prestation</button>
       </div>
+      <div class="groupe" id="b-phyto-groupe" hidden>
+        <h4>Traitement phytosanitaire <small>(une culture par bon, une ou plusieurs parcelles)</small></h4>
+        <div id="b-phyto"></div>
+      </div>
       <label>Heures de travail<input type="text" inputmode="decimal" id="b-heures"></label>
       <label class="large">Remarques<textarea id="b-remarques" maxlength="1000"></textarea></label>
+      <div class="groupe">
+        <h4>Pièces jointes <small>(ajout et retrait enregistrés aussitôt)</small></h4>
+        <ul class="pj-liste" id="b-pj-liste"></ul>
+        <label class="lien-btn" id="b-pj-ajout"><span id="b-pj-texte">+ Ajouter une photo ou un PDF</span><input type="file" id="b-pj-fichier" accept="image/*,application/pdf" multiple hidden></label>
+      </div>
       <div class="histo" id="b-histo" hidden></div>
     </div>
     <p class="erreur" id="b-erreur" role="alert" hidden></p>
     <div class="boutons">
       <button type="button" class="danger" id="b-annuler">Annuler ce bon</button>
       <span class="espace"></span>
+      <button type="button" class="secondaire" id="b-fiche" hidden>Fiche phyto (PDF)</button>
       <button type="button" class="secondaire" id="b-fermer">Fermer</button>
       <button type="submit" class="principal" id="b-enregistrer">Enregistrer la correction</button>
     </div>
@@ -258,6 +285,15 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
 </dialog>
 
 <!-- Fiche client / prestation / chauffeur -->
+<dialog id="dlg-pj">
+  <div class="fen">
+    <h3 id="pj-titre">Pièces jointes</h3>
+    <p class="sous" id="pj-sous"></p>
+    <ul class="pj-liste" id="pj-lecture"></ul>
+    <div class="boutons"><span class="espace"></span><button type="button" class="secondaire" id="pj-fermer">Fermer</button></div>
+  </div>
+</dialog>
+
 <dialog id="dlg-fiche">
   <form class="fen" id="form-fiche" method="dialog" novalidate>
     <h3 id="f-titre">Fiche</h3>
@@ -274,6 +310,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
 
 <div class="toast" id="toast" role="status" hidden></div>
 
+<script src="phyto.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (même déploiement que les autres pages)
@@ -291,13 +328,15 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     client: { titre: 'Clients', un: 'client', champs: [
       { cle: 'code', nom: 'Code EBP', code: true }, { cle: 'nom', nom: 'Nom', requis: true, large: true },
       { cle: 'adresse', nom: 'Adresse', large: true }, { cle: 'codePostal', nom: 'Code postal' }, { cle: 'commune', nom: 'Commune' },
+      { cle: 'siret', nom: 'SIRET (14 chiffres, pour les traitements phyto)' },
       { cle: 'actif', nom: 'Actif (proposé aux chauffeurs et au planning)', caseACocher: true }],
       colonnes: [['code', 'Code EBP'], ['nom', 'Nom'], ['commune', 'Commune'], ['actif', 'Actif']] },
     prestation: { titre: 'Prestations', un: 'prestation', champs: [
       { cle: 'code', nom: 'Code article EBP', code: true }, { cle: 'unite', nom: 'Unité (ha, h, m³, t, u…)', requis: true },
       { cle: 'libelle', nom: 'Libellé', requis: true, large: true },
-      { cle: 'actif', nom: 'Active (proposée aux chauffeurs et au planning)', caseACocher: true }],
-      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['actif', 'Active']] },
+      { cle: 'actif', nom: 'Active (proposée aux chauffeurs et au planning)', caseACocher: true },
+      { cle: 'phyto', nom: 'Traitement phytosanitaire (demande les informations du registre phyto)', caseACocher: true, parDefaut: false }],
+      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['phyto', 'Phyto'], ['actif', 'Active']] },
     chauffeur: { titre: 'Chauffeurs', un: 'chauffeur', champs: [
       { cle: 'code', nom: 'Code', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
       { cle: 'telephone', nom: 'Téléphone portable' },
@@ -372,7 +411,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     $('vue-ref').hidden = !FICHES[onglet];
     var aTraiter = D.sarl.liste.filter(function (e) { return e.action || e.alerte; }).length;
     $('compte-sarl').textContent = aTraiter; $('compte-sarl').hidden = !aTraiter;
-    if (onglet === 'afacturer') dessinerAFacturer();
+    if (onglet === 'afacturer') { alertePhyto(); dessinerAFacturer(); }
     else if (onglet === 'factures') dessinerHistorique();
     else if (onglet === 'sarl') dessinerSarl();
     else dessinerReferentiel();
@@ -438,7 +477,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
           var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : ''].filter(Boolean).join(', ');
           var intr = b.intrants.length ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
           return '<tr' + (decoches[b.numero] ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (decoches[b.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
-            + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + '</td>'
+            + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + trombone(b) + '</td>'
             + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td><td>' + esc(lieu) + '</td>'
             + '<td>' + resume(b.lignes) + intr + '</td><td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td>'
             + '<td>' + esc(b.remarques) + '</td><td><button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button></td></tr>';
@@ -486,7 +525,8 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
   // ------------------------------------------------------------ Correction d'un bon
   function bonParNumero(n) {
     return D.aFacturer.filter(function (b) { return b.numero === n; })[0]
-      || (D.sarl.liste.filter(function (e) { return e.numero === n; })[0] || {}).bon;
+      || (D.sarl.liste.filter(function (e) { return e.numero === n; })[0] || {}).bon
+      || D.historique.filter(function (b) { return b.numero === n; })[0];
   }
   function opts(liste, valeur, vide, texte) {
     var h = '<option value="">' + esc(vide) + '</option>', trouve = !valeur;
@@ -521,7 +561,27 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     div.querySelector('.retirer').onclick = function () { div.remove(); };
     $('b-intrants').appendChild(div);
   }
-  function majSarl() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; }
+  function majSarl() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; majPhyto(); }
+
+  // Traitement phytosanitaire (phyto.js) : bloc affiché dès qu'une prestation « Phyto » est choisie
+  var blocPhyto = Phyto.monter($('b-phyto'), { bouton: 'lien-btn' });
+  // Parcelles de la SARL (plusieurs possibles : quantités réparties au prorata des surfaces dans la feuille d'échange)
+  var parcellesSarl = Phyto.parcelles($('b-parcelles'), { bouton: 'lien-btn',
+    codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
+  function estPhyto() {
+    return Array.prototype.some.call($('b-lignes').querySelectorAll('.e-code'), function (s) {
+      var p = D.prestations.filter(function (x) { return x.code === s.value; })[0];
+      return p && p.phyto;
+    });
+  }
+  function majPhyto() {
+    var ph = estPhyto(), sarl = $('b-client').value === D.codeClientSarl;
+    $('b-phyto-groupe').hidden = !ph;
+    $('b-intrants').hidden = $('b-ajout-intrant').hidden = ph && sarl;
+    blocPhyto.utiliserParcelles(sarl ? parcellesSarl : null);
+    parcellesSarl.afficherPositions(ph); // SARL : une parcelle par bon (feuille d'échange)
+  }
+  $('b-lignes').addEventListener('change', majPhyto);
 
   function ouvrirBon(numero) {
     var b = bonParNumero(numero); if (!b) return;
@@ -532,10 +592,11 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     $('b-client').innerHTML = opts(D.clients, b.client, 'Choisir le client', function (c) { return c.nom + ' (' + c.code + ')'; });
     $('b-client').value = b.client;
     $('b-lieu').value = b.lieu;
-    $('b-parcelle').innerHTML = '<option value="">Choisir la parcelle</option>' + D.parcelles.liste.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('');
-    $('b-parcelle').value = b.parcelle;
+    parcellesSarl.remplir(b.parcelles);
     $('b-lignes').innerHTML = ''; b.lignes.forEach(ligneEd); if (!b.lignes.length) ligneEd({});
     $('b-intrants').innerHTML = ''; b.intrants.forEach(intrantEd);
+    blocPhyto.remplir(b.phyto ? Object.assign({}, b.phyto, { parcelles: b.parcelles }) : null);
+    $('b-fiche').hidden = !b.phyto;
     $('b-heures').value = b.heures === '' ? '' : String(b.heures).replace('.', ',');
     $('b-remarques').value = b.remarques;
     majSarl();
@@ -543,6 +604,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     $('b-histo').innerHTML = '<b>Corrections précédentes</b><ul>' + b.corrections.map(function (c) {
       return '<li>' + horodate(c.date) + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
     }).join('') + '</ul>';
+    dessinerPiecesBon();
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
     $('dlg-bon').showModal();
   }
@@ -557,9 +619,10 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     var b = bonOuvert, sarl = $('b-client').value === D.codeClientSarl;
     var donnees = {
       numero: b.numero, date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
-      parcelle: sarl ? $('b-parcelle').value : '', heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
+      parcelles: sarl ? parcellesSarl.lire() : [], heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
       lignes: Array.prototype.map.call($('b-lignes').children, function (d) { return { code: d.querySelector('.e-code').value, quantite: d.querySelector('.e-qte').value.trim() }; }),
-      intrants: !sarl ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
+      phyto: estPhyto() ? blocPhyto.lire() : null,
+      intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
       })
     };
@@ -567,6 +630,12 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     for (var i = 0; i < donnees.lignes.length; i++) {
       if (!donnees.lignes[i].code) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
       if (!(nombre(donnees.lignes[i].quantite) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez une quantité supérieure à zéro.');
+    }
+    if (sarl) { var epa = parcellesSarl.verifier(!!donnees.phyto); if (epa) return erreurBon(epa); }
+    if (donnees.phyto) {
+      var ep = blocPhyto.verifier(); if (ep) return erreurBon(ep);
+      var mq = blocPhyto.manques();
+      if (mq.length && !confirm('Traitement phyto : il manque encore ' + mq.join(' et ') + '. Enregistrer quand même ? Le bon restera signalé « à compléter ».')) return;
     }
     $('b-enregistrer').disabled = true; occupe++;
     appel('gestionModifierBon', { bon: donnees })
@@ -594,6 +663,144 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
       })
       .catch(function (err) { occupe--; erreurBon(err.message); });
   };
+
+  // ------------------------------------------------------------ Pièces jointes
+  var PJ_MAX = 5, PJ_COTE = 1600, PJ_PDF_MAX = 10 * 1024 * 1024;
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  /** Fiche phyto PDF du bon, ouverte dans un nouvel onglet (à imprimer ou envoyer au client). */
+  function ouvrirFiche(numero) {
+    var fenetre = window.open('', '_blank');
+    if (fenetre) fenetre.document.write('<p style="font:16px sans-serif;padding:20px">Préparation de la fiche…</p>');
+    appel('gestionFichePhyto', { numero: numero }).then(function (r) {
+      var octets = atob(r.donnees), t = new Uint8Array(octets.length);
+      for (var i = 0; i < octets.length; i++) t[i] = octets.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([t], { type: 'application/pdf' }));
+      if (fenetre) fenetre.location.href = url; else window.location.href = url;
+    }).catch(function (e) { if (fenetre) fenetre.close(); toast(e.message, true); });
+  }
+  $('b-fiche').onclick = function () { ouvrirFiche(bonOuvert.numero); };
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-fiche]') : null;
+    if (t) ouvrirFiche(t.getAttribute('data-fiche'));
+  });
+  function trombone(b) {
+    var manque = b.phyto && b.phyto.manques.length;
+    return (b.phyto ? (manque && b.statut === 'À facturer'
+        ? '<button type="button" class="pj-badge manque" data-corriger="' + esc(b.numero) + '" title="À compléter : ' + esc(b.phyto.manques.join(', ')) + '">Phyto à compléter</button>'
+        : '<button type="button" class="pj-badge' + (manque ? ' manque' : '') + '" data-fiche="' + esc(b.numero) + '" title="Fiche du traitement phytosanitaire (PDF)' + (manque ? ' – à compléter : ' + esc(b.phyto.manques.join(', ')) : '') + '">Fiche phyto</button>') : '')
+      + piecesBadge(b);
+  }
+  /** Bandeau des traitements phyto à compléter (n° AMM, positions des parcelles). */
+  function alertePhyto() {
+    var l = D.aFacturer.concat(D.historique).filter(function (b) { return b.statut !== 'Annulé' && b.phyto && b.phyto.manques.length; });
+    $('alerte-phyto').hidden = !l.length;
+    $('alerte-phyto').innerHTML = l.length ? '⚠ ' + l.length + ' traitement' + (l.length > 1 ? 's' : '') + ' phyto à compléter pour le registre :<ul>'
+      + l.map(function (b) {
+        return '<li><b>' + esc(b.numero) + '</b> ' + esc(b.clientNom) + ', ' + court(b.date) + ', ' + esc(b.chauffeurNom) + ' : ' + esc(b.phyto.manques.join(', '))
+          + (b.statut === 'À facturer' ? ' <button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Compléter</button>'
+            : ' (facturé : « Remettre à facturer » pour le compléter)') + '</li>';
+      }).join('') + '</ul>' : '';
+  }
+  $('alerte-phyto').addEventListener('click', function (e) { var n = e.target.getAttribute('data-corriger'); if (n) ouvrirBon(n); });
+  function piecesBadge(b) {
+    return b.pieces && b.pieces.length ? '<button type="button" class="pj-badge" data-pj-voir="' + esc(b.numero) + '" title="Pièces jointes">📎 ' + b.pieces.length + '</button>' : '';
+  }
+  function taille(ko) { return ko < 1024 ? ko + ' Ko' : (ko / 1024).toFixed(1).replace('.', ',') + ' Mo'; }
+  function lignePiece(p, retirable) {
+    return '<li><span class="pj-type">' + (p.type === 'application/pdf' ? 'PDF' : 'Photo') + '</span>'
+      + '<span class="pj-nom">' + esc(p.nom) + '<small>' + taille(p.taille) + (p.par ? ', ' + esc(p.par) : '') + (p.ajouteeLe ? ', ' + horodate(p.ajouteeLe) : '') + '</small></span>'
+      + '<button type="button" class="lien-btn" data-pj-ouvrir="' + esc(p.id) + '">Voir</button>'
+      + (retirable ? '<button type="button" class="lien-btn" style="color:var(--rouge)" data-pj-retirer="' + esc(p.id) + '">Retirer</button>' : '') + '</li>';
+  }
+  function dessinerPiecesBon() {
+    var l = bonOuvert.pieces || [];
+    $('b-pj-liste').innerHTML = l.length ? l.map(function (p) { return lignePiece(p, true); }).join('') : '<li class="pj-vide">Aucune pièce jointe.</li>';
+    $('b-pj-ajout').hidden = l.length >= PJ_MAX;
+  }
+  /** Ouvre une pièce dans un nouvel onglet (le fichier Drive n'est partagé avec personne : il passe par l'application). */
+  function ouvrirPiece(id) {
+    var fenetre = window.open('', '_blank');
+    if (fenetre) fenetre.document.write('<p style="font:16px sans-serif;padding:20px">Chargement de la pièce jointe…</p>');
+    appel('gestionLirePiece', { id: id }).then(function (r) {
+      var octets = atob(r.donnees), t = new Uint8Array(octets.length);
+      for (var i = 0; i < octets.length; i++) t[i] = octets.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([t], { type: r.type }));
+      if (fenetre) fenetre.location.href = url; else window.location.href = url;
+    }).catch(function (e) { if (fenetre) fenetre.close(); toast(e.message, true); });
+  }
+  function preparerPiece(f) {
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      if (f.size > PJ_PDF_MAX) return Promise.reject(new Error(f.name + ' : PDF trop lourd (10 Mo au plus).'));
+      return new Promise(function (ok, ko) {
+        var r = new FileReader();
+        r.onload = function () { ok({ nom: f.name, type: 'application/pdf', donnees: String(r.result).split(',')[1] }); };
+        r.onerror = function () { ko(new Error(f.name + ' : fichier illisible.')); };
+        r.readAsDataURL(f);
+      });
+    }
+    if (!/^image\//.test(f.type)) return Promise.reject(new Error(f.name + ' : seules les photos et les PDF sont acceptés.'));
+    return new Promise(function (ok, ko) {
+      var u = URL.createObjectURL(f), img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(u);
+        var k = Math.min(1, PJ_COTE / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        ok({ nom: f.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg', donnees: c.toDataURL('image/jpeg', 0.82).split(',')[1] });
+      };
+      img.onerror = function () { URL.revokeObjectURL(u); ko(new Error(f.name + ' : format de photo non reconnu.')); };
+      img.src = u;
+    });
+  }
+  function rafraichirBonOuvert() {
+    return charger(true).then(function () {
+      var b = bonOuvert && bonParNumero(bonOuvert.numero);
+      if (b && $('dlg-bon').open) { bonOuvert.pieces = b.pieces; dessinerPiecesBon(); }
+    });
+  }
+  $('b-pj-fichier').onchange = function () {
+    var b = bonOuvert, fichiers = Array.prototype.slice.call($('b-pj-fichier').files);
+    $('b-pj-fichier').value = '';
+    var place = PJ_MAX - (b.pieces || []).length;
+    if (fichiers.length > place) toast('5 pièces au maximum par bon : seules les ' + place + ' premières sont ajoutées.', true);
+    occupe++;
+    $('b-pj-texte').textContent = 'Envoi en cours…';
+    fichiers.slice(0, place).reduce(function (suite, f) {
+      return suite.then(function () { return preparerPiece(f); })
+        .then(function (p) { p.idEnvoi = uuid(); return appel('gestionAjouterPiece', { numero: b.numero, piece: p }); })
+        .catch(function (e) { toast(e.message, true); });
+    }, Promise.resolve()).then(function () {
+      occupe--;
+      $('b-pj-texte').textContent = '+ Ajouter une photo ou un PDF';
+      return rafraichirBonOuvert();
+    });
+  };
+  $('b-pj-liste').onclick = function (e) {
+    var id = e.target.getAttribute('data-pj-ouvrir');
+    if (id) return ouvrirPiece(id);
+    id = e.target.getAttribute('data-pj-retirer');
+    if (!id || !confirm('Retirer cette pièce jointe ? Le fichier part dans la corbeille Google Drive (récupérable 30 jours).')) return;
+    occupe++;
+    appel('gestionRetirerPiece', { numero: bonOuvert.numero, id: id })
+      .then(function () { occupe--; toast('Pièce jointe retirée'); return rafraichirBonOuvert(); })
+      .catch(function (err) { occupe--; toast(err.message, true); });
+  };
+  // Trombone d'une liste : consultation des pièces
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-pj-voir]') : null;
+    if (!t) return;
+    var b = bonParNumero(t.getAttribute('data-pj-voir')); if (!b) return;
+    $('pj-titre').textContent = 'Pièces jointes du bon ' + b.numero;
+    $('pj-sous').textContent = b.clientNom + ', ' + court(b.date) + ', ' + b.chauffeurNom;
+    $('pj-lecture').innerHTML = b.pieces.map(function (p) { return lignePiece(p, false); }).join('');
+    $('dlg-pj').showModal();
+  });
+  $('pj-lecture').onclick = function (e) { var id = e.target.getAttribute('data-pj-ouvrir'); if (id) ouvrirPiece(id); };
+  $('pj-fermer').onclick = function () { $('dlg-pj').close(); };
 
   // ------------------------------------------------------------ Trois Étangs (feuille d'échange)
   var ORDRE_SARL = { 'À envoyer': 1, 'À mettre à jour': 2, 'À retirer': 3, 'À corriger': 4, 'Modifié après import': 5,
@@ -626,7 +833,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
       var info = e.etat === 'Importé' && e.traiteLe ? 'Importé le ' + court(e.traiteLe) + (e.ref ? ' (' + e.ref + ')' : '') : e.message;
       return '<tr class="' + (e.alerte ? 'alerte-sarl' : '') + (e.action && decochesSarl[e.numero] ? ' decoche' : '') + '">'
         + '<td>' + coche + '</td>'
-        + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + '</td>'
+        + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + trombone(b) + '</td>'
         + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
         + '<td>' + esc(b.parcelle || '') + (b.lieu ? '<br><small>' + esc(b.lieu) + '</small>' : '') + '</td>'
         + '<td>' + resume(b.lignes) + intr + '</td>'
@@ -679,7 +886,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
       return !f || (b.numero + ' ' + b.clientNom + ' ' + b.client + ' ' + b.piece + ' ' + b.chauffeurNom).toLowerCase().indexOf(f) >= 0;
     });
     $('histo').innerHTML = l.length ? l.map(function (b) {
-      return '<tr><td class="num">' + esc(b.numero) + '</td><td>' + court(b.date) + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
+      return '<tr><td class="num">' + esc(b.numero) + trombone(b) + '</td><td>' + court(b.date) + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
         + '<td>' + resume(b.lignes) + '</td><td><span class="pastille' + (b.statut === 'Annulé' ? ' annule' : '') + '">' + esc(b.statut) + '</span></td>'
         + '<td>' + esc(b.piece) + '</td><td>' + horodate(b.factureLe) + '</td>'
         + '<td>' + (b.statut === 'Facturé' ? '<button type="button" class="lien-btn" data-remettre="' + esc(b.numero) + '">Remettre à facturer</button>' : '') + '</td></tr>';
@@ -707,7 +914,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     $('ref-corps').innerHTML = l.length ? l.map(function (x) {
       return '<tr class="cliquable' + (x.actif ? '' : ' inactif') + '" data-code="' + esc(x.code) + '">' + conf.colonnes.map(function (c) {
         var v = x[c[0]];
-        if (c[0] === 'actif') return '<td>' + (v ? 'oui' : 'non') + '</td>';
+        if (c[0] === 'actif' || c[0] === 'phyto') return '<td>' + (v ? 'oui' : 'non') + '</td>';
         if (c[0] === 'code') return '<td class="num">' + esc(v) + '</td>';
         if (c[0] === 'lien') {
           var sms = x.telephone ? 'sms:' + encodeURIComponent(x.telephone.replace(/\s/g, '')) + '?body=' + encodeURIComponent('Ton lien pour les bons de travail ETA : ' + v) : '';
@@ -751,7 +958,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
     }).join('');
     conf.champs.forEach(function (c) {
       var i = document.querySelector('#f-champs [data-cle="' + c.cle + '"]');
-      if (c.caseACocher) i.checked = x ? x.actif : true; else i.value = x ? (x[c.cle] || '') : '';
+      if (c.caseACocher) i.checked = x ? !!x[c.cle] : c.parDefaut !== false; else i.value = x ? (x[c.cle] || '') : '';
     });
     $('f-erreur').hidden = true; $('f-enregistrer').disabled = false;
     $('dlg-fiche').showModal();
@@ -779,7 +986,7 @@ dialog::backdrop{background:rgba(10,20,14,.45)}
   $('actualiser').onclick = function () { charger(true); };
   // Mise à jour automatique toutes les 2 minutes (nouveaux bons), sauf pendant une saisie
   setInterval(function () {
-    if (D && !occupe && !$('dlg-bon').open && !$('dlg-fiche').open && document.visibilityState === 'visible') charger(true);
+    if (D && !occupe && !$('dlg-bon').open && !$('dlg-fiche').open && !$('dlg-pj').open && document.visibilityState === 'visible') charger(true);
   }, 120000);
 
   charger(false);

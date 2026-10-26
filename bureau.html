@@ -137,6 +137,7 @@ textarea{min-height:64px;resize:vertical}
 .ligne-ed input,.ligne-ed select{display:block;width:100%;font-size:15px;background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px}
 .ligne-ed .u{font-weight:700}
 .retirer{background:none;border:0;color:var(--rouge);text-decoration:underline;font-size:13px}
+.phyto-manque{color:var(--rouge);font-weight:700;white-space:nowrap}
 .lien-btn{background:none;border:0;color:var(--vert);font-weight:700;text-decoration:underline;padding:4px 0}
 
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--encre);color:var(--fond);
@@ -246,7 +247,7 @@ textarea{min-height:64px;resize:vertical}
       <label class="large">Parcelle ou lieu<input type="text" id="b-lieu" maxlength="200" autocomplete="off"></label>
       <div class="groupe sarl" id="b-sarl" hidden>
         <h4>SARL des Trois Étangs</h4>
-        <label>Parcelle (îlot PAC)<select id="b-parcelle"></select></label>
+        <div id="b-parcelles"></div>
         <div id="b-intrants" style="margin-top:10px"></div>
         <button type="button" class="lien-btn" id="b-ajout-intrant">+ Ajouter un intrant</button>
       </div>
@@ -254,6 +255,10 @@ textarea{min-height:64px;resize:vertical}
         <h4>Travaux réalisés</h4>
         <div id="b-lignes"></div>
         <button type="button" class="lien-btn" id="b-ajout-ligne">+ Ajouter une prestation</button>
+      </div>
+      <div class="groupe" id="b-phyto-groupe" hidden>
+        <h4>Traitement phytosanitaire</h4>
+        <div id="b-phyto"></div>
       </div>
       <label>Heures de travail<input type="text" inputmode="decimal" id="b-heures" autocomplete="off"></label>
       <label class="large">Remarques<textarea id="b-remarques" maxlength="1000"></textarea></label>
@@ -269,6 +274,7 @@ textarea{min-height:64px;resize:vertical}
 
 <div class="toast" id="toast" role="status" hidden></div>
 
+<script src="phyto.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (même déploiement que la page chauffeur)
@@ -381,7 +387,7 @@ textarea{min-height:64px;resize:vertical}
       + '<b>' + esc(m.clientNom) + '</b>'
       + '<span class="presta">' + esc(m.prestationLibelle) + '</span>'
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
-      + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + '</span>' : '')
+      + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
       + '</button>';
   }
@@ -390,7 +396,15 @@ textarea{min-height:64px;resize:vertical}
     return '<button type="button" class="carte libre" data-bon="' + esc(b.numero) + '" title="Travail sans mission">'
       + '<b>' + esc(b.clientNom) + '</b><span class="presta">' + esc(b.travaux) + '</span>'
       + (b.lieu ? '<span class="lieu">' + esc(b.lieu) + '</span>' : '')
-      + '<span class="bon">✓ ' + esc(b.numero) + ' (sans mission)</span></button>';
+      + '<span class="bon">✓ ' + esc(b.numero) + ' (sans mission)' + trombone(b.numero) + '</span></button>';
+  }
+
+  // Trombone : nombre de pièces jointes du bon (consultables dans l'écran Gestion)
+  function trombone(n) {
+    var k = (D.nbPieces || {})[n];
+    var m = (D.phytoACompleter || {})[n];
+    return (k ? ' <span title="' + k + ' pièce(s) jointe(s), visibles dans l\'écran Gestion">📎' + (k > 1 ? k : '') + '</span>' : '')
+      + (m ? ' <span class="phyto-manque" title="Traitement phyto à compléter dans Gestion : ' + esc(m) + '">⚠ phyto</span>' : '');
   }
 
   // Une mission en attente n'apparaît qu'à partir de la semaine qui contient sa date « à partir du »
@@ -635,7 +649,27 @@ textarea{min-height:64px;resize:vertical}
     div.querySelector('.retirer').onclick = function () { div.remove(); };
     $('b-intrants').appendChild(div);
   }
-  function majSarlBon() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; }
+  function majSarlBon() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; majPhytoBon(); }
+
+  // Traitement phytosanitaire (phyto.js), comme sur le téléphone ; position GPS saisie en coordonnées
+  var blocPhyto = Phyto.monter($('b-phyto'), { bouton: 'lien-btn' });
+  // Parcelles de la SARL (plusieurs possibles : quantités réparties au prorata des surfaces dans la feuille d'échange)
+  var parcellesSarl = Phyto.parcelles($('b-parcelles'), { bouton: 'lien-btn',
+    codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
+  function estPhytoBon() {
+    return Array.prototype.some.call($('b-lignes').querySelectorAll('.e-code'), function (s) {
+      var p = D.prestations.filter(function (x) { return x.code === s.value; })[0];
+      return p && p.phyto;
+    });
+  }
+  function majPhytoBon() {
+    var ph = estPhytoBon(), sarl = $('b-client').value === D.codeClientSarl;
+    $('b-phyto-groupe').hidden = !ph;
+    $('b-intrants').hidden = $('b-ajout-intrant').hidden = ph && sarl;
+    blocPhyto.utiliserParcelles(sarl ? parcellesSarl : null);
+    parcellesSarl.afficherPositions(ph);
+  }
+  $('b-lignes').addEventListener('change', majPhytoBon);
 
   function ouvrirBon(m) {
     bonMission = m || null; idEnvoiBon = uuid();
@@ -648,9 +682,10 @@ textarea{min-height:64px;resize:vertical}
     $('b-client').innerHTML = optionsActives(D.clients, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
     $('b-client').value = m ? m.client : '';
     $('b-lieu').value = m ? m.lieu : '';
-    $('b-parcelle').innerHTML = '<option value="">Choisir la parcelle</option>' + D.parcelles.liste.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('');
     $('b-lignes').innerHTML = ''; ligneBon(m ? m.prestation : '');
     $('b-intrants').innerHTML = '';
+    blocPhyto.remplir(null);
+    parcellesSarl.remplir(null);
     majSarlBon();
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
     $('dlg-bon').showModal();
@@ -668,20 +703,26 @@ textarea{min-height:64px;resize:vertical}
     var bon = {
       idEnvoi: idEnvoiBon, idMission: bonMission ? bonMission.id : '', chauffeur: $('b-chauffeur').value,
       date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
-      parcelle: sarl ? $('b-parcelle').value : '', heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
+      parcelles: sarl ? parcellesSarl.lire() : [], heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
       lignes: Array.prototype.map.call($('b-lignes').children, function (d) { return { code: d.querySelector('.e-code').value, quantite: d.querySelector('.e-qte').value.trim() }; }),
-      intrants: !sarl ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
+      phyto: estPhytoBon() ? blocPhyto.lire() : null,
+      intrants: !sarl || estPhytoBon() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
       }).filter(function (x) { return x.produit || x.dose || x.unite; })
     };
     if (!bon.chauffeur) return erreurBon('Choisissez le chauffeur qui a fait le travail.');
     if (!bon.date) return erreurBon("Indiquez la date de l'intervention.");
     if (!bon.client) return erreurBon('Choisissez le client.');
-    if (sarl && !bon.parcelle) return erreurBon('Choisissez la parcelle.');
+    if (sarl) { var epa = parcellesSarl.verifier(!!bon.phyto); if (epa) return erreurBon(epa); }
     if (!bon.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
     for (var i = 0; i < bon.lignes.length; i++) {
       if (!bon.lignes[i].code) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
       if (!(nombre(bon.lignes[i].quantite) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
+    }
+    if (bon.phyto) {
+      var ep = blocPhyto.verifier(); if (ep) return erreurBon(ep);
+      var mq = blocPhyto.manques();
+      if (mq.length && !confirm('Traitement phyto : il manque encore ' + mq.join(' et ') + '. Enregistrer quand même ? Le bon sera signalé « à compléter » dans Gestion.')) return;
     }
     $('b-enregistrer').disabled = true; occupe++;
     appel('bureauSaisirBon', { bon: bon })
