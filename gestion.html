@@ -155,6 +155,9 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--encre);color:var(--fond);
   padding:10px 16px;border-radius:8px;font-weight:700;z-index:50;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.3)}
 .toast.erreur-t{background:var(--rouge);color:#fff}
+table.histo-detail .rem{min-width:160px;max-width:280px;white-space:pre-line}
+table.histo-detail small{color:var(--doux)}
+table.histo-detail .parc{white-space:nowrap}
 .chargement{padding:60px 0;text-align:center;color:var(--doux);font-size:18px}
 .vide-lien{max-width:540px;margin:60px auto;background:var(--surface);border-radius:12px;padding:24px}
 </style>
@@ -197,11 +200,18 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
 
   <section id="vue-factures" hidden>
     <div class="outils">
-      <label>Rechercher<input type="search" id="filtre-histo" placeholder="client, n° de bon, n° de pièce…"></label>
-      <span class="resume">Les 400 derniers bons facturés ou annulés</span>
+      <label>Année<select id="filtre-annee"></select></label>
+      <label>Client<select id="filtre-client-histo"></select></label>
+      <label>Statut<select id="filtre-statut-histo">
+        <option value="">Facturés et annulés</option>
+        <option value="Facturé">Facturés</option>
+        <option value="Annulé">Annulés</option>
+      </select></label>
+      <label>Rechercher<input type="search" id="filtre-histo" placeholder="n° de bon, pièce, parcelle, remarque…"></label>
+      <span class="resume" id="resume-histo"></span>
     </div>
-    <div class="client"><div class="bons"><table class="liste">
-      <thead><tr><th>N° bon</th><th>Date</th><th>Client</th><th>Chauffeur</th><th>Prestations</th><th>Statut</th><th>Pièce EBP</th><th>Facturé le</th><th></th></tr></thead>
+    <div class="client"><div class="bons"><table class="liste histo-detail">
+      <thead><tr><th>N° bon</th><th>Date</th><th>Client</th><th>Chauffeur</th><th>Lieu / parcelles</th><th>Travaux et produits</th><th class="nb">Heures</th><th>Remarques</th><th>Facturation</th><th></th></tr></thead>
       <tbody id="histo"></tbody>
     </table></div></div>
   </section>
@@ -322,7 +332,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
     else JETON = localStorage.getItem(CLE) || '';
   } catch (e) {}
 
-  var D = null, onglet = 'afacturer', decoches = {}, decochesSarl = {}, bonOuvert = null, ficheOuverte = null, occupe = 0;
+  var D = null, anneeHisto = '', onglet = 'afacturer', decoches = {}, decochesSarl = {}, bonOuvert = null, ficheOuverte = null, occupe = 0;
 
   var FICHES = {
     client: { titre: 'Clients', un: 'client', champs: [
@@ -383,7 +393,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
     if (!JETON) { $('chargement').hidden = true; $('vue-lien').hidden = false; return Promise.resolve(); }
     if (!silencieux) $('chargement').hidden = false;
     etat('Mise à jour…'); occupe++;
-    return appel('gestionCharger', {})
+    return appel('gestionCharger', { annee: anneeHisto })
       .then(function (d) {
         occupe--; D = d; $('chargement').hidden = true; $('alerte').hidden = true;
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
@@ -526,7 +536,8 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
   function bonParNumero(n) {
     return D.aFacturer.filter(function (b) { return b.numero === n; })[0]
       || (D.sarl.liste.filter(function (e) { return e.numero === n; })[0] || {}).bon
-      || D.historique.filter(function (b) { return b.numero === n; })[0];
+      || D.historique.filter(function (b) { return b.numero === n; })[0]
+      || (D.alertesPhyto || []).filter(function (b) { return b.numero === n; })[0];
   }
   function opts(liste, valeur, vide, texte) {
     var h = '<option value="">' + esc(vide) + '</option>', trouve = !valeur;
@@ -692,7 +703,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
   }
   /** Bandeau des traitements phyto à compléter (n° AMM, positions des parcelles). */
   function alertePhyto() {
-    var l = D.aFacturer.concat(D.historique).filter(function (b) { return b.statut !== 'Annulé' && b.phyto && b.phyto.manques.length; });
+    var l = D.aFacturer.concat(D.historique, D.alertesPhyto || []).filter(function (b) { return b.statut !== 'Annulé' && b.phyto && b.phyto.manques.length; });
     $('alerte-phyto').hidden = !l.length;
     $('alerte-phyto').innerHTML = l.length ? '⚠ ' + l.length + ' traitement' + (l.length > 1 ? 's' : '') + ' phyto à compléter pour le registre :<ul>'
       + l.map(function (b) {
@@ -898,20 +909,72 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
       .catch(function (err) { occupe--; bouton.disabled = false; toast(err.message, true); charger(true); });
   };
 
-  // ------------------------------------------------------------ Historique
+  // ------------------------------------------------------------ Facturés (par année, avec le détail des bons)
+  function parcellesTexte(b) {
+    return (b.parcelles || []).map(function (x) {
+      return '<span class="parc">' + esc(x.nom || x.code) + (x.code && x.nom && x.nom !== x.code ? ' <small>' + esc(x.code) + '</small>' : '')
+        + (x.surface !== '' && x.surface != null ? ' <small>' + nb(x.surface) + ' ha</small>' : '') + '</span>';
+    }).join('<br>');
+  }
+  function phytoTexte(p) {
+    if (!p) return '';
+    return '<br><small><b>Traitement</b> : ' + esc([p.culture, p.bbch ? 'BBCH ' + p.bbch : '', p.bouillie !== '' ? 'bouillie ' + nb(p.bouillie) + ' L' : ''].filter(Boolean).join(', '))
+      + (p.produits.length ? ' ; ' + p.produits.map(function (x) { return esc(x.nom) + ' ' + nb(x.quantite) + ' ' + esc(x.unite) + (x.amm ? ' (AMM ' + esc(x.amm) + ')' : ''); }).join(', ') : '')
+      + '</small>';
+  }
+  function motifAnnulation(b) {
+    var c = b.corrections.filter(function (x) { return x.element === 'Statut' && /^Annulé/.test(x.apres); }).pop();
+    return c ? c.apres.replace(/^Annulé\s*:?\s*/, '') : '';
+  }
+  function texteRecherche(b) {
+    return [b.numero, b.clientNom, b.client, b.piece, b.chauffeurNom, b.lieu, b.remarques, b.idMission,
+      (b.parcelles || []).map(function (x) { return x.code + ' ' + x.nom; }).join(' '),
+      b.lignes.map(function (x) { return x.code + ' ' + x.libelle; }).join(' '),
+      b.intrants.map(function (x) { return x.produit; }).join(' '),
+      b.phyto ? b.phyto.culture + ' ' + b.phyto.produits.map(function (x) { return x.nom + ' ' + x.amm; }).join(' ') : ''].join(' ').toLowerCase();
+  }
   function dessinerHistorique() {
+    $('filtre-annee').innerHTML = D.annees.map(function (a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
+    $('filtre-annee').value = String(D.anneeHistorique);
+    var clients = {};
+    D.historique.forEach(function (b) { clients[b.client] = b.clientNom; });
+    var choisi = $('filtre-client-histo').value;
+    var codes = Object.keys(clients).sort(function (a, b) { return clients[a].localeCompare(clients[b], 'fr'); });
+    $('filtre-client-histo').innerHTML = '<option value="">Tous les clients</option>'
+      + codes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(clients[c]) + '</option>'; }).join('');
+    $('filtre-client-histo').value = clients[choisi] ? choisi : '';
+    var c = $('filtre-client-histo').value, st = $('filtre-statut-histo').value;
     var f = $('filtre-histo').value.trim().toLowerCase();
     var l = D.historique.filter(function (b) {
-      return !f || (b.numero + ' ' + b.clientNom + ' ' + b.client + ' ' + b.piece + ' ' + b.chauffeurNom).toLowerCase().indexOf(f) >= 0;
+      return (!c || b.client === c) && (!st || b.statut === st) && (!f || texteRecherche(b).indexOf(f) >= 0);
     });
+    var nbF = l.filter(function (b) { return b.statut === 'Facturé'; }).length;
+    $('resume-histo').textContent = l.length + ' bon' + (l.length > 1 ? 's' : '') + ' en ' + D.anneeHistorique
+      + (nbF !== l.length ? ' (' + nbF + ' facturé' + (nbF > 1 ? 's' : '') + ', ' + (l.length - nbF) + ' annulé' + (l.length - nbF > 1 ? 's' : '') + ')' : '');
     $('histo').innerHTML = l.length ? l.map(function (b) {
-      return '<tr><td class="num">' + esc(b.numero) + trombone(b) + '</td><td>' + court(b.date) + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
-        + '<td>' + resume(b.lignes) + '</td><td><span class="pastille' + (b.statut === 'Annulé' ? ' annule' : '') + '">' + esc(b.statut) + '</span></td>'
-        + '<td>' + esc(b.piece) + '</td><td>' + horodate(b.factureLe) + '</td>'
+      var intr = b.intrants.length && !b.phyto ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
+      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b)].filter(Boolean).join('<br>');
+      var annule = b.statut === 'Annulé', motif = annule ? motifAnnulation(b) : '';
+      return '<tr><td class="num">' + esc(b.numero)
+        + (b.corrections.filter(function (x) { return x.element !== 'Statut'; }).length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '')
+        + trombone(b) + (b.idMission ? '<br><small>' + esc(b.idMission) + '</small>' : '') + '</td>'
+        + '<td>' + court(b.date) + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.chauffeurNom) + (b.saisiParBureau ? '<br><small>saisi par le bureau</small>' : '') + '</td>'
+        + '<td>' + lieu + '</td><td>' + resume(b.lignes) + intr + phytoTexte(b.phyto) + '</td>'
+        + '<td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td><td class="rem">' + esc(b.remarques) + '</td>'
+        + '<td><span class="pastille' + (annule ? ' annule' : '') + '">' + esc(b.statut) + '</span>'
+        + (b.piece ? '<br>pièce <b>' + esc(b.piece) + '</b>' : '') + (b.factureLe ? '<br><small>le ' + horodate(b.factureLe) + '</small>' : '')
+        + (motif ? '<br><small>' + esc(motif) + '</small>' : '') + '</td>'
         + '<td>' + (b.statut === 'Facturé' ? '<button type="button" class="lien-btn" data-remettre="' + esc(b.numero) + '">Remettre à facturer</button>' : '') + '</td></tr>';
-    }).join('') : '<tr><td colspan="9">Aucun bon.</td></tr>';
+    }).join('') : '<tr><td colspan="10">Aucun bon.</td></tr>';
   }
   $('filtre-histo').oninput = dessinerHistorique;
+  $('filtre-client-histo').onchange = dessinerHistorique;
+  $('filtre-statut-histo').onchange = dessinerHistorique;
+  $('filtre-annee').onchange = function () {
+    anneeHisto = $('filtre-annee').value;
+    $('histo').innerHTML = '<tr><td colspan="10">Chargement de ' + esc(anneeHisto) + '…</td></tr>';
+    charger(true);
+  };
   $('histo').addEventListener('click', function (e) {
     var n = e.target.getAttribute('data-remettre'); if (!n) return;
     if (!confirm('Remettre le bon ' + n + ' dans les bons à facturer ? Le n° de pièce EBP sera effacé.')) return;

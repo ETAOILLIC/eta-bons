@@ -73,6 +73,23 @@ main{padding:14px 16px 40px}
 .case.weekend{background:var(--surface-2)}
 .case.passe{background-image:repeating-linear-gradient(135deg,transparent 0 8px,rgba(127,127,127,.06) 8px 16px)}
 .case.survol{outline:3px dashed var(--vert);outline-offset:-4px;background:var(--vert-pale)}
+.case.interdit{outline:3px dashed var(--rouge);outline-offset:-4px;cursor:not-allowed}
+.case.absent{background:repeating-linear-gradient(135deg,var(--rouge-pale) 0 10px,transparent 10px 20px)}
+
+/* Journée d'un chauffeur : absence et note */
+.journee{display:block;width:100%;text-align:left;background:transparent;border:1px dashed transparent;border-radius:6px;
+  padding:2px 6px;font-size:12px;line-height:1.3;color:var(--doux);min-height:22px}
+.journee .crayon{opacity:.35}
+.case:hover .journee .crayon,.journee:focus-visible .crayon{opacity:1}
+.journee:hover{border-color:var(--trait)}
+.journee.remplie{background:var(--ambre-pale);border:1px solid var(--ambre);color:var(--encre)}
+.journee .abs{display:inline-block;background:var(--rouge);color:#fff;font-weight:700;border-radius:4px;padding:0 6px;margin-right:4px}
+.journee.absente{background:var(--rouge-pale);border-color:var(--rouge)}
+.carte.conflit{outline:2px solid var(--rouge)}
+.carte .conflit-txt{display:block;color:var(--rouge);font-weight:700;font-size:12px}
+.options{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:0 2px 10px}
+.case-inline{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+.case-inline input{width:18px;height:18px;min-height:0;margin:0;flex:none}
 
 /* Étiquettes de mission */
 .carte{background:var(--surface);border:1px solid var(--trait);border-left:6px solid var(--vert);border-radius:7px;
@@ -173,6 +190,9 @@ textarea{min-height:64px;resize:vertical}
 
   <section id="vue-planning" hidden>
     <div class="alerte" id="alerte" hidden></div>
+    <div class="options">
+      <label class="case-inline"><input type="checkbox" id="voir-faits"> Afficher les travaux faits (missions faites et bons sans mission)</label>
+    </div>
     <div class="defile"><div class="grille" id="grille"></div></div>
     <div class="legende">
       <span><i style="background:var(--ambre)"></i>À caser : la date « à partir du » est arrivée</span>
@@ -181,7 +201,8 @@ textarea{min-height:64px;resize:vertical}
       <span><i style="background:var(--vert)"></i>Planifiée</span>
       <span><i style="background:var(--vert-pale);border:1px solid var(--vert)"></i>Faite (bon reçu)</span>
       <span><i style="background:var(--bleu-pale);border:1px dashed var(--bleu)"></i>Travail sans mission (bon reçu)</span>
-      <span>Glissez une mission vers un jour et un chauffeur. Double-cliquez dans une case pour y créer une mission.</span>
+      <span><i style="background:var(--rouge-pale);border:1px solid var(--rouge)"></i>Chauffeur absent</span>
+      <span>Glissez une mission vers un jour et un chauffeur. Double-cliquez dans une case pour y créer une mission. ✎ en haut d'une case : absence ou note du jour.</span>
     </div>
 
     <h2>Derniers bons reçus</h2>
@@ -272,6 +293,29 @@ textarea{min-height:64px;resize:vertical}
   </form>
 </dialog>
 
+<dialog id="dlg-journee">
+  <form class="fiche" id="form-journee" method="dialog" novalidate>
+    <h3 id="j-titre">Journée</h3>
+    <p class="sous" id="j-sous"></p>
+    <div class="champs">
+      <label class="large case-inline"><input type="checkbox" id="j-absent"> Absent ce jour-là (aucune mission ne pourra lui être confiée)</label>
+      <label class="large">Note du jour <span class="aide">(arrivera à 9 h, doit partir à 17 h…)</span>
+        <textarea id="j-note" maxlength="200"></textarea>
+      </label>
+      <label>Appliquer jusqu'au <span class="aide">(facultatif, plusieurs jours)</span>
+        <input type="date" id="j-au">
+      </label>
+    </div>
+    <p class="erreur" id="j-erreur" role="alert" hidden></p>
+    <div class="boutons">
+      <button type="button" class="danger" id="j-effacer" hidden>Effacer</button>
+      <span class="espace"></span>
+      <button type="button" class="secondaire" id="j-fermer">Fermer</button>
+      <button type="submit" class="principal" id="j-enregistrer">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="phyto.js"></script>
@@ -294,6 +338,9 @@ textarea{min-height:64px;resize:vertical}
   var enCours = null;      // mission ouverte dans la fiche (null = création)
   var glisse = null;       // id de la mission en cours de glissement
   var occupe = 0;          // nombre d'enregistrements en cours
+  var CLE_FAITS = 'eta-planning-faits';
+  var voirFaits = true;    // afficher les missions faites et les bons sans mission (choix mémorisé sur cet ordinateur)
+  try { voirFaits = localStorage.getItem(CLE_FAITS) !== '0'; } catch (e) {}
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -375,8 +422,8 @@ textarea{min-height:64px;resize:vertical}
     return '';
   }
 
-  function carte(m) {
-    var c = classeCarte(m);
+  function carte(m, absent) {
+    var c = classeCarte(m) + (absent && m.statut !== 'Faite' ? ' conflit' : '');
     var dates = [];
     if (m.aPartirDu && !m.datePrevue) dates.push((m.aPartirDu > D.aujourdhui ? 'pas avant le ' : 'dès le ') + court(m.aPartirDu));
     if (m.auPlusTard) dates.push('avant le ' + court(m.auPlusTard));
@@ -389,7 +436,19 @@ textarea{min-height:64px;resize:vertical}
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
       + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
+      + (absent && m.statut !== 'Faite' ? '<span class="conflit-txt">⚠ chauffeur absent : à replanifier</span>' : '')
       + '</button>';
+  }
+
+  // Journée d'un chauffeur (absence, note) : { absent, note } ou null
+  function journee(code, date) { return (code && date && D.journees && D.journees[code + '|' + date]) || null; }
+  function absent(code, date) { var j = journee(code, date); return !!(j && j.absent); }
+  function nomDe(code) { var c = D.chauffeurs.filter(function (x) { return x.code === code; })[0]; return c ? c.nom : code; }
+  function boutonJournee(code, date) {
+    var j = journee(code, date);
+    var contenu = j ? (j.absent ? '<span class="abs">Absent</span>' : '') + esc(j.note) : '<span class="crayon">✎</span>';
+    return '<button type="button" class="journee' + (j ? ' remplie' : '') + (j && j.absent ? ' absente' : '') + '" data-journee="' + esc(code) + '|' + date + '"'
+      + ' title="' + (j ? 'Modifier l\'absence ou la note du jour' : 'Ajouter une absence ou une note pour ce jour') + '">' + contenu + '</button>';
   }
 
   function carteLibre(b) {
@@ -441,16 +500,20 @@ textarea{min-height:64px;resize:vertical}
         return !m.datePrevue && visibleCetteSemaine(m, dim)
           && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
       }).sort(trierAttente);
-      h += '<div class="case attente" data-chauffeur="' + esc(l.code) + '" data-date="">' + attente.map(carte).join('') + '</div>';
+      h += '<div class="case attente" data-chauffeur="' + esc(l.code) + '" data-date="">' + attente.map(function (m) { return carte(m, false); }).join('') + '</div>';
       js.forEach(function (j, i) {
         var du = D.missions.filter(function (m) {
-          return m.datePrevue === j && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
+          return m.datePrevue === j && (voirFaits || m.statut !== 'Faite')
+            && (m.chauffeur === l.code || (l.code === '' && !connus[m.chauffeur]));
         });
-        var libres = (D.bonsLibres || []).filter(function (b) {
+        var libres = !voirFaits ? [] : (D.bonsLibres || []).filter(function (b) {
           return b.date === j && (b.chauffeur === l.code || (l.code === '' && !connus[b.chauffeur]));
         });
-        var cl = 'case' + (i >= 5 ? ' weekend' : '') + (j < D.aujourdhui ? ' passe' : '');
-        h += '<div class="' + cl + '" data-chauffeur="' + esc(l.code) + '" data-date="' + j + '">' + du.map(carte).join('') + libres.map(carteLibre).join('') + '</div>';
+        var abs = absent(l.code, j);
+        var cl = 'case' + (i >= 5 ? ' weekend' : '') + (j < D.aujourdhui ? ' passe' : '') + (abs ? ' absent' : '');
+        h += '<div class="' + cl + '" data-chauffeur="' + esc(l.code) + '" data-date="' + j + '">'
+          + (l.code ? boutonJournee(l.code, j) : '')
+          + du.map(function (m) { return carte(m, abs); }).join('') + libres.map(carteLibre).join('') + '</div>';
       });
     });
     $('grille').innerHTML = h;
@@ -487,6 +550,7 @@ textarea{min-height:64px;resize:vertical}
   function deplacer(id, chauffeur, date) {
     var m = missionParId(id);
     if (!m || (m.chauffeur === chauffeur && m.datePrevue === date)) return;
+    if (absent(chauffeur, date)) { toast(nomDe(chauffeur) + ' est absent le ' + court(date) + ' : mission non déplacée.', true); return; }
     var ancienne = JSON.parse(JSON.stringify(m));
     var nouvelle = JSON.parse(JSON.stringify(m));
     nouvelle.chauffeur = chauffeur; nouvelle.datePrevue = date;
@@ -509,24 +573,27 @@ textarea{min-height:64px;resize:vertical}
   });
   grille.addEventListener('dragend', function () {
     glisse = null;
-    Array.prototype.forEach.call(grille.querySelectorAll('.survol,.glisse'), function (x) { x.classList.remove('survol', 'glisse'); });
+    Array.prototype.forEach.call(grille.querySelectorAll('.survol,.glisse,.interdit'), function (x) { x.classList.remove('survol', 'glisse', 'interdit'); });
   });
   grille.addEventListener('dragover', function (e) {
     var cs = e.target.closest('.case'); if (!cs || !glisse) return;
     e.preventDefault(); e.dataTransfer.dropEffect = 'move';
-    if (!cs.classList.contains('survol')) {
-      Array.prototype.forEach.call(grille.querySelectorAll('.survol'), function (x) { x.classList.remove('survol'); });
-      cs.classList.add('survol');
+    var cl = absent(cs.getAttribute('data-chauffeur'), cs.getAttribute('data-date')) ? 'interdit' : 'survol';
+    if (!cs.classList.contains(cl)) {
+      Array.prototype.forEach.call(grille.querySelectorAll('.survol,.interdit'), function (x) { x.classList.remove('survol', 'interdit'); });
+      cs.classList.add(cl);
     }
   });
   grille.addEventListener('drop', function (e) {
     var cs = e.target.closest('.case'); if (!cs) return;
     e.preventDefault();
     var id = e.dataTransfer.getData('text/plain') || glisse;
-    cs.classList.remove('survol');
+    cs.classList.remove('survol', 'interdit');
     if (id) deplacer(id, cs.getAttribute('data-chauffeur'), cs.getAttribute('data-date'));
   });
   grille.addEventListener('click', function (e) {
+    var jb = e.target.closest('.journee');
+    if (jb) { var k = jb.getAttribute('data-journee').split('|'); ouvrirJournee(k[0], k[1]); return; }
     var c = e.target.closest('.carte'); if (!c) return;
     if (c.getAttribute('data-bon')) {
       var b = D.bonsLibres.filter(function (x) { return x.numero === c.getAttribute('data-bon'); })[0];
@@ -536,9 +603,11 @@ textarea{min-height:64px;resize:vertical}
     ouvrirFiche(missionParId(c.getAttribute('data-id')));
   });
   grille.addEventListener('dblclick', function (e) {
-    if (e.target.closest('.carte')) return;
+    if (e.target.closest('.carte') || e.target.closest('.journee')) return;
     var cs = e.target.closest('.case'); if (!cs) return;
-    ouvrirFiche(null, { chauffeur: cs.getAttribute('data-chauffeur'), datePrevue: cs.getAttribute('data-date') });
+    var ch = cs.getAttribute('data-chauffeur'), dt = cs.getAttribute('data-date');
+    if (absent(ch, dt)) { toast(nomDe(ch) + ' est absent ce jour-là : la mission est créée sans chauffeur.'); ch = ''; }
+    ouvrirFiche(null, { chauffeur: ch, datePrevue: dt });
   });
 
   // ------------------------------------------------------------ Fiche mission
@@ -566,6 +635,7 @@ textarea{min-height:64px;resize:vertical}
     $('f-prestation').innerHTML = options(D.prestations, v.prestation, 'Choisir la prestation', function (p) { return p.libelle + (p.unite ? ' (' + p.unite + ')' : ''); });
     $('f-chauffeur').innerHTML = options(D.chauffeurs.filter(function (c) { return c.actif; }), v.chauffeur, 'Non affecté', function (c) { return c.nom; });
     $('f-client').value = v.client; $('f-prestation').value = v.prestation; $('f-chauffeur').value = v.chauffeur;
+    setTimeout(marquerAbsents, 0);
     $('f-lieu').value = v.lieu; $('f-consignes').value = v.consignes;
     $('f-apartir').value = v.aPartirDu; $('f-auplustard').value = v.auPlusTard; $('f-jour').value = v.datePrevue;
     Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
@@ -579,6 +649,18 @@ textarea{min-height:64px;resize:vertical}
 
   function erreurFiche(t) { $('f-erreur').textContent = t; $('f-erreur').hidden = false; }
 
+  // Chauffeurs absents le jour prévu (connu pour la semaine affichée) : signalés dans la liste
+  function marquerAbsents() {
+    var jour = $('f-jour').value;
+    Array.prototype.forEach.call($('f-chauffeur').options, function (o) {
+      if (!o.value) return;
+      var j = journee(o.value, jour);
+      if (!o.getAttribute('data-nom')) o.setAttribute('data-nom', o.textContent);
+      o.textContent = o.getAttribute('data-nom') + (j && j.absent ? ' — absent' : j && j.note ? ' — ' + j.note : '');
+    });
+  }
+  $('f-jour').addEventListener('change', marquerAbsents);
+
   $('form-fiche').addEventListener('submit', function (e) {
     e.preventDefault();
     var m = {
@@ -591,6 +673,10 @@ textarea{min-height:64px;resize:vertical}
     if (!m.client) return erreurFiche('Choisissez le client.');
     if (!m.prestation) return erreurFiche('Choisissez la prestation.');
     if (m.aPartirDu && m.auPlusTard && m.auPlusTard < m.aPartirDu) return erreurFiche('La date « au plus tard » est antérieure à la date « à partir du ».');
+    if (m.chauffeur && m.datePrevue && absent(m.chauffeur, m.datePrevue)
+      && !(enCours && enCours.chauffeur === m.chauffeur && enCours.datePrevue === m.datePrevue)) {
+      return erreurFiche(nomDe(m.chauffeur) + ' est absent le ' + court(m.datePrevue) + ' : choisissez un autre jour ou un autre chauffeur.');
+    }
     if (m.datePrevue && m.aPartirDu && m.datePrevue < m.aPartirDu
       && !confirm('Le jour prévu est avant la date « à partir du » demandée par le client. Enregistrer quand même ?')) return;
     $('f-enregistrer').disabled = true;
@@ -732,6 +818,58 @@ textarea{min-height:64px;resize:vertical}
   $('f-saisir-bon').onclick = function () { var m = enCours; $('fiche').close(); ouvrirBon(m); };
   $('nouveau-bon').onclick = function () { if (D) ouvrirBon(null); };
 
+  // ------------------------------------------------------------ Journée d'un chauffeur (absence, note)
+  var journeeOuverte = null;
+  function ouvrirJournee(code, date) {
+    var j = journee(code, date);
+    journeeOuverte = { chauffeur: code, du: date, existe: !!j };
+    $('j-titre').textContent = nomDe(code);
+    $('j-sous').textContent = dateObj(date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    $('j-absent').checked = !!(j && j.absent);
+    $('j-note').value = j ? j.note : '';
+    $('j-au').value = ''; $('j-au').min = date;
+    $('j-effacer').hidden = !j;
+    $('j-erreur').hidden = true; $('j-enregistrer').disabled = false;
+    $('dlg-journee').showModal();
+    $('j-note').focus();
+  }
+  function enregistrerJournee(absentJ, note) {
+    var o = journeeOuverte, au = $('j-au').value || o.du;
+    if (au < o.du) { $('j-erreur').textContent = 'La date de fin est antérieure au jour choisi.'; $('j-erreur').hidden = false; return; }
+    if (absentJ) {
+      var prevues = D.missions.filter(function (m) { return m.chauffeur === o.chauffeur && m.statut === 'Planifiée' && m.datePrevue >= o.du && m.datePrevue <= au; });
+      if (prevues.length && !confirm(prevues.length + ' mission' + (prevues.length > 1 ? 's sont déjà prévues' : ' est déjà prévue') + ' pour ' + nomDe(o.chauffeur)
+        + ' pendant cette absence. Elle' + (prevues.length > 1 ? 's restent' : ' reste') + ' sur le planning, signalée' + (prevues.length > 1 ? 's' : '') + ' en rouge, à replanifier. Continuer ?')) return;
+    }
+    $('j-enregistrer').disabled = true; occupe++;
+    appel('bureauEnregistrerJournee', { journee: { chauffeur: o.chauffeur, du: o.du, au: au, absent: absentJ, note: note } })
+      .then(function (r) {
+        occupe--; $('dlg-journee').close();
+        var t = (absentJ || note ? 'Enregistré' : 'Effacé') + (r.jours > 1 ? ' sur ' + r.jours + ' jours' : '');
+        if (r.missionsPrevues.length) t += '. À replanifier : ' + r.missionsPrevues.join(', ');
+        toast(t, r.missionsPrevues.length > 0);
+        return charger(true);
+      })
+      .catch(function (err) { occupe--; $('j-enregistrer').disabled = false; $('j-erreur').textContent = err.message; $('j-erreur').hidden = false; });
+  }
+  $('form-journee').addEventListener('submit', function (e) {
+    e.preventDefault();
+    enregistrerJournee($('j-absent').checked, $('j-note').value.trim());
+  });
+  $('j-effacer').onclick = function () {
+    if (confirm('Effacer l\'absence et la note' + ($('j-au').value ? ' sur toute la période' : ' de ce jour') + ' ?')) enregistrerJournee(false, '');
+  };
+  $('j-fermer').onclick = function () { $('dlg-journee').close(); };
+  $('form-journee').addEventListener('input', function () { $('j-erreur').hidden = true; });
+
+  // Afficher ou masquer les travaux faits
+  $('voir-faits').checked = voirFaits;
+  $('voir-faits').onchange = function () {
+    voirFaits = $('voir-faits').checked;
+    try { localStorage.setItem(CLE_FAITS, voirFaits ? '1' : '0'); } catch (e) {}
+    if (D) dessiner();
+  };
+
   // ------------------------------------------------------------ Barre du haut
   function semaine(n) { if (D) { debut = decaler(D.lundi, n); charger(false); } }
   $('prec').onclick = function () { semaine(-7); };
@@ -742,7 +880,7 @@ textarea{min-height:64px;resize:vertical}
 
   // Mise à jour automatique toutes les 2 minutes (bons reçus, missions faites), sauf pendant une saisie
   setInterval(function () {
-    if (D && !occupe && !glisse && !$('fiche').open && !$('dlg-bon').open && document.visibilityState === 'visible') charger(true);
+    if (D && !occupe && !glisse && !$('fiche').open && !$('dlg-bon').open && !$('dlg-journee').open && document.visibilityState === 'visible') charger(true);
   }, 120000);
 
   charger(false);
