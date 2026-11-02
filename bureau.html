@@ -256,7 +256,7 @@ textarea{min-height:64px;resize:vertical}
         <div id="f-equipe-existante"></div>
         <div id="f-equipe"></div>
         <button type="button" class="lien-btn" id="f-ajout-equipier">+ Ajouter un chauffeur au chantier</button>
-        <p class="aide" style="margin:6px 0 0">Chaque chauffeur reçoit sa propre mission (mêmes client, lieu, dates et consignes), avec sa prestation, et fait son propre bon.</p>
+        <p class="aide" style="margin:6px 0 0">Chaque chauffeur reçoit sa propre mission (mêmes client, lieu, dates et consignes), avec sa prestation, et fait son propre bon. Le jour, le client, le lieu, les consignes et les dates changés ici le sont pour toute l'équipe ; le chauffeur et la prestation restent propres à chacun.</p>
       </div>
       <div class="groupe" id="f-phyto-groupe" hidden>
         <h4>Prescription phyto (avant application)</h4>
@@ -558,6 +558,7 @@ textarea{min-height:64px;resize:vertical}
         var i = D.missions.indexOf(missionParId(r.id) || {});
         if (i >= 0) D.missions[i] = r; else D.missions.push(r);
         (r.ajoutees || []).forEach(function (x) { D.missions.push(x); });
+        if ((r.equipeModifiee || []).length) charger(true); // missions des autres chauffeurs du chantier déplacées ou modifiées
         dessiner(); etat('Enregistré');
         return r;
       })
@@ -574,9 +575,15 @@ textarea{min-height:64px;resize:vertical}
     var m = missionParId(id);
     if (!m || (m.chauffeur === chauffeur && m.datePrevue === date)) return;
     if (absent(chauffeur, date)) { toast(nomDe(chauffeur) + ' est absent le ' + court(date) + ' : mission non déplacée.', true); return; }
+    // Chantier à plusieurs chauffeurs : changer de jour déplace toute l'équipe (contrôle des absences ici, puis au serveur)
+    var autres = date !== m.datePrevue ? (m.equipe || []).filter(function (x) { return x.statut === 'Planifiée' || x.statut === 'À planifier'; }) : [];
+    var abs = autres.filter(function (x) { return date && absent(x.chauffeur, date); });
+    if (abs.length) { toast(abs.map(function (x) { return x.chauffeurNom; }).join(', ') + ' : absent le ' + court(date) + ' ; l\'équipe n\'est pas déplacée.', true); return; }
     var ancienne = JSON.parse(JSON.stringify(m));
     var nouvelle = JSON.parse(JSON.stringify(m));
     nouvelle.chauffeur = chauffeur; nouvelle.datePrevue = date;
+    // Affichage immédiat des autres missions du chantier au nouveau jour
+    autres.forEach(function (x) { var y = missionParId(x.id); if (y) { y.datePrevue = date; y.statut = date ? 'Planifiée' : 'À planifier'; } });
     delete nouvelle.prescription; // la prescription n'est pas modifiée par un déplacement
     delete nouvelle.equipe; delete nouvelle.ajoutees;
     // Affichage immédiat, confirmé ou annulé par la réponse du serveur
@@ -584,7 +591,7 @@ textarea{min-height:64px;resize:vertical}
     nouvelle.statut = date ? 'Planifiée' : 'À planifier';
     dessiner();
     var el = document.querySelector('.carte[data-id="' + id + '"]'); if (el) el.classList.add('envoi');
-    enregistrer(nouvelle, ancienne).then(avertirSiMasquee).catch(function () {});
+    enregistrer(nouvelle, ancienne).then(avertirSiMasquee).catch(function () { if (autres.length) charger(true); });
   }
 
   // ------------------------------------------------------------ Glisser-déposer
