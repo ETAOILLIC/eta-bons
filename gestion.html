@@ -173,6 +173,7 @@ table.histo-detail .parc{white-space:nowrap}
     <button type="button" role="tab" data-onglet="client">Clients</button>
     <button type="button" role="tab" data-onglet="prestation">Prestations</button>
     <button type="button" role="tab" data-onglet="chauffeur">Chauffeurs</button>
+    <button type="button" role="tab" data-onglet="phyto">Produits phyto</button>
   </nav>
   <span class="espace"></span>
   <span class="etat" id="etat"></span>
@@ -287,7 +288,7 @@ table.histo-detail .parc{white-space:nowrap}
     <div class="boutons">
       <button type="button" class="danger" id="b-annuler">Annuler ce bon</button>
       <span class="espace"></span>
-      <button type="button" class="secondaire" id="b-fiche" hidden>Fiche phyto (PDF)</button>
+      <button type="button" class="secondaire" id="b-fiche" hidden>Fiche chantier phyto (PDF)</button>
       <button type="button" class="secondaire" id="b-fermer">Fermer</button>
       <button type="submit" class="principal" id="b-enregistrer">Enregistrer la correction</button>
     </div>
@@ -339,6 +340,8 @@ table.histo-detail .parc{white-space:nowrap}
       { cle: 'code', nom: 'Code EBP', code: true }, { cle: 'nom', nom: 'Nom', requis: true, large: true },
       { cle: 'adresse', nom: 'Adresse', large: true }, { cle: 'codePostal', nom: 'Code postal' }, { cle: 'commune', nom: 'Commune' },
       { cle: 'siret', nom: 'SIRET (14 chiffres, pour les traitements phyto)' },
+      { cle: 'contact', nom: 'Contact (nom prénom)' }, { cle: 'email', nom: 'E-mail' },
+      { cle: 'telFixe', nom: 'Tél fixe' }, { cle: 'portable', nom: 'Portable' },
       { cle: 'actif', nom: 'Actif (proposé aux chauffeurs et au planning)', caseACocher: true }],
       colonnes: [['code', 'Code EBP'], ['nom', 'Nom'], ['commune', 'Commune'], ['actif', 'Actif']] },
     prestation: { titre: 'Prestations', un: 'prestation', champs: [
@@ -351,7 +354,15 @@ table.histo-detail .parc{white-space:nowrap}
       { cle: 'code', nom: 'Code', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
       { cle: 'telephone', nom: 'Téléphone portable' },
       { cle: 'actif', nom: 'Actif (son lien fonctionne et il apparaît au planning)', caseACocher: true }],
-      colonnes: [['code', 'Code'], ['nom', 'Nom'], ['telephone', 'Téléphone'], ['lien', 'Lien personnel'], ['actif', 'Actif']] }
+      colonnes: [['code', 'Code'], ['nom', 'Nom'], ['telephone', 'Téléphone'], ['lien', 'Lien personnel'], ['actif', 'Actif']] },
+    phyto: { titre: 'Produits phyto', un: 'produit', champs: [
+      { cle: 'code', nom: 'N° AMM (7 chiffres)', code: true }, { cle: 'nom', nom: 'Nom commercial complet', requis: true, large: true },
+      { cle: 'categorie', nom: 'Catégorie (herbicide, fongicide…)' }, { cle: 'uniteDose', nom: 'Unité de dose (L/ha, kg/ha…)' },
+      { cle: 'doseHomologuee', nom: 'Dose homologuée par ha' }, { cle: 'dar', nom: 'DAR (jours)' },
+      { cle: 'dre', nom: 'DRE (heures)' }, { cle: 'znt', nom: 'ZNT (m)' },
+      { cle: 'actif', nom: 'Actif (proposé à la saisie)', caseACocher: true }],
+      colonnes: [['code', 'N° AMM'], ['nom', 'Nom'], ['categorie', 'Catégorie'], ['doseHomologuee', 'Dose homologuée'], ['uniteDose', 'Unité'],
+        ['dar', 'DAR (j)'], ['dre', 'DRE (h)'], ['znt', 'ZNT (m)'], ['actif', 'Actif']] }
   };
 
   function $(id) { return document.getElementById(id); }
@@ -575,7 +586,8 @@ table.histo-detail .parc{white-space:nowrap}
   function majSarl() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; majPhyto(); }
 
   // Traitement phytosanitaire (phyto.js) : bloc affiché dès qu'une prestation « Phyto » est choisie
-  var blocPhyto = Phyto.monter($('b-phyto'), { bouton: 'lien-btn' });
+  var blocPhyto = Phyto.monter($('b-phyto'), { bouton: 'lien-btn', date: function () { return $('b-date').value; },
+    catalogue: function () { return D ? D.catalogue.filter(function (c) { return c.actif; }) : []; } });
   // Parcelles de la SARL (plusieurs possibles : quantités réparties au prorata des surfaces dans la feuille d'échange)
   var parcellesSarl = Phyto.parcelles($('b-parcelles'), { bouton: 'lien-btn',
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
@@ -698,7 +710,7 @@ table.histo-detail .parc{white-space:nowrap}
     var manque = b.phyto && b.phyto.manques.length;
     return (b.phyto ? (manque && b.statut === 'À facturer'
         ? '<button type="button" class="pj-badge manque" data-corriger="' + esc(b.numero) + '" title="À compléter : ' + esc(b.phyto.manques.join(', ')) + '">Phyto à compléter</button>'
-        : '<button type="button" class="pj-badge' + (manque ? ' manque' : '') + '" data-fiche="' + esc(b.numero) + '" title="Fiche du traitement phytosanitaire (PDF)' + (manque ? ' – à compléter : ' + esc(b.phyto.manques.join(', ')) : '') + '">Fiche phyto</button>') : '')
+        : '<button type="button" class="pj-badge' + (manque ? ' manque' : '') + '" data-fiche="' + esc(b.numero) + '" title="Fiche chantier du traitement phytosanitaire (PDF)' + (manque ? ' – à compléter : ' + esc(b.phyto.manques.join(', ')) : '') + '">Fiche chantier</button>') : '')
       + piecesBadge(b);
   }
   /** Bandeau des traitements phyto à compléter (n° AMM, positions des parcelles). */
@@ -985,7 +997,7 @@ table.histo-detail .parc{white-space:nowrap}
   });
 
   // ------------------------------------------------------------ Clients, prestations, chauffeurs
-  function listeRef() { return D[onglet === 'client' ? 'clients' : onglet === 'prestation' ? 'prestations' : 'chauffeurs']; }
+  function listeRef() { return D[{ client: 'clients', prestation: 'prestations', chauffeur: 'chauffeurs', phyto: 'catalogue' }[onglet]]; }
   function dessinerReferentiel() {
     var conf = FICHES[onglet], f = $('filtre-ref').value.trim().toLowerCase(), inact = $('voir-inactifs').checked;
     $('ajouter').textContent = onglet === 'prestation' ? '+ Ajouter une prestation' : '+ Ajouter un ' + conf.un;
@@ -1004,7 +1016,7 @@ table.histo-detail .parc{white-space:nowrap}
             + (sms ? '<a class="petit" href="' + esc(sms) + '">Envoyer par SMS</a>' : '')
             + '<button type="button" class="petit" data-renouveler="' + esc(x.code) + '">Nouveau lien</button></div>' : '') + '</td>';
         }
-        return '<td>' + esc(v) + '</td>';
+        return '<td>' + (typeof v === 'number' ? nb(v) : esc(v)) + '</td>';
       }).join('') + '</tr>';
     }).join('') : '<tr><td colspan="' + conf.colonnes.length + '">Aucune fiche.</td></tr>';
   }
@@ -1032,6 +1044,7 @@ table.histo-detail .parc{white-space:nowrap}
     ficheOuverte = { type: onglet, nouveau: !x };
     $('f-titre').textContent = x ? (x.nom || x.libelle) : (onglet === 'prestation' ? 'Nouvelle prestation' : 'Nouveau ' + conf.un);
     $('f-sous').textContent = x ? 'Le code ne peut pas être modifié. Pour ne plus proposer cette fiche, décochez « actif » : l\'historique est conservé.'
+      : onglet === 'phyto' ? 'Le code est le n° AMM du produit (7 chiffres, site e-phy de l\'Anses). Les produits sont aussi ajoutés automatiquement depuis les bons et les missions.'
       : 'Utilisez le même code que dans EBP.';
     $('f-champs').innerHTML = conf.champs.map(function (c) {
       if (c.caseACocher) return '<label class="large case-inline"><input type="checkbox" data-cle="' + c.cle + '"> ' + esc(c.nom) + '</label>';
@@ -1040,7 +1053,8 @@ table.histo-detail .parc{white-space:nowrap}
     }).join('');
     conf.champs.forEach(function (c) {
       var i = document.querySelector('#f-champs [data-cle="' + c.cle + '"]');
-      if (c.caseACocher) i.checked = x ? !!x[c.cle] : c.parDefaut !== false; else i.value = x ? (x[c.cle] || '') : '';
+      if (c.caseACocher) i.checked = x ? !!x[c.cle] : c.parDefaut !== false;
+      else i.value = !x || x[c.cle] == null ? '' : typeof x[c.cle] === 'number' ? String(x[c.cle]).replace('.', ',') : x[c.cle];
     });
     $('f-erreur').hidden = true; $('f-enregistrer').disabled = false;
     $('dlg-fiche').showModal();

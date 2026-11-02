@@ -145,7 +145,9 @@ textarea{min-height:64px;resize:vertical}
 .erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:7px;padding:8px 10px;font-weight:700;margin:12px 0 0}
 .info{background:var(--vert-pale);border-radius:7px;padding:8px 10px;margin:0 0 12px}
 .boutons .saisir{background:transparent;border:1.5px solid var(--vert);color:var(--vert);border-radius:8px;min-height:40px;padding:6px 14px;font-weight:700}
-#dlg-bon{width:min(680px,96vw);max-height:92vh}
+#dlg-bon{width:min(720px,96vw);max-height:92vh}
+#fiche{max-height:92vh}
+#fiche.large{width:min(760px,96vw)}
 .groupe{grid-column:1/-1;border:1px solid var(--trait);border-radius:9px;padding:8px 12px 12px}
 .groupe.sarl{border:2px solid var(--ambre)}
 .groupe h4{margin:2px 0 6px;font-size:14px}
@@ -245,6 +247,12 @@ textarea{min-height:64px;resize:vertical}
       <label>Chauffeur
         <select id="f-chauffeur"></select>
       </label>
+      <div class="groupe" id="f-phyto-groupe" hidden>
+        <h4>Prescription phyto (avant application)</h4>
+        <p class="aide" id="f-phyto-etat" style="margin:0 0 8px">Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.</p>
+        <div id="f-parcelles-sarl"></div>
+        <div id="f-phyto"></div>
+      </div>
     </div>
     <p class="erreur" id="f-erreur" role="alert" hidden></p>
     <div class="boutons">
@@ -436,6 +444,7 @@ textarea{min-height:64px;resize:vertical}
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
       + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
+      + (m.prescription && m.statut !== 'Faite' ? '<span class="dates">' + (m.valideAvantLe ? '✓ prescription validée' : 'prescription phyto') + '</span>' : '')
       + (absent && m.statut !== 'Faite' ? '<span class="conflit-txt">⚠ chauffeur absent : à replanifier</span>' : '')
       + '</button>';
   }
@@ -554,6 +563,7 @@ textarea{min-height:64px;resize:vertical}
     var ancienne = JSON.parse(JSON.stringify(m));
     var nouvelle = JSON.parse(JSON.stringify(m));
     nouvelle.chauffeur = chauffeur; nouvelle.datePrevue = date;
+    delete nouvelle.prescription; // la prescription n'est pas modifiée par un déplacement
     // Affichage immédiat, confirmé ou annulé par la réponse du serveur
     D.missions[D.missions.indexOf(m)] = nouvelle;
     nouvelle.statut = date ? 'Planifiée' : 'À planifier';
@@ -638,6 +648,7 @@ textarea{min-height:64px;resize:vertical}
     setTimeout(marquerAbsents, 0);
     $('f-lieu').value = v.lieu; $('f-consignes').value = v.consignes;
     $('f-apartir').value = v.aPartirDu; $('f-auplustard').value = v.auPlusTard; $('f-jour').value = v.datePrevue;
+    remplirPresc(m);
     Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
     $('f-enregistrer').hidden = fige;
     $('f-annuler-mission').hidden = !m || fige;
@@ -648,6 +659,40 @@ textarea{min-height:64px;resize:vertical}
   }
 
   function erreurFiche(t) { $('f-erreur').textContent = t; $('f-erreur').hidden = false; }
+
+  // Prescription phyto de la mission (phyto.js, partie « avant application »)
+  var catalogue = function () { return D ? D.catalogue || [] : []; };
+  var blocPresc = Phyto.monter($('f-phyto'), { mode: 'prescription', bouton: 'lien-btn', catalogue: catalogue });
+  var parcellesPresc = Phyto.parcelles($('f-parcelles-sarl'), { bouton: 'lien-btn',
+    codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPresc.recalculer(); } });
+  function prestationPhyto(code) { var p = D.prestations.filter(function (x) { return x.code === code; })[0]; return !!(p && p.phyto); }
+  function majPresc() {
+    var ph = prestationPhyto($('f-prestation').value), sarl = $('f-client').value === D.codeClientSarl;
+    $('f-phyto-groupe').hidden = !ph;
+    $('fiche').classList.toggle('large', ph);
+    $('f-parcelles-sarl').hidden = !sarl;
+    blocPresc.utiliserParcelles(sarl ? parcellesPresc : null);
+  }
+  $('f-prestation').addEventListener('change', majPresc);
+  $('f-client').addEventListener('change', majPresc);
+  function remplirPresc(m) {
+    var pr = m && m.prescription;
+    parcellesPresc.remplir(pr && m.client === D.codeClientSarl ? pr.parcelles : null);
+    blocPresc.remplir(pr || null);
+    $('f-phyto-etat').textContent = m && m.valideAvantLe
+      ? 'Validée par le chauffeur le ' + court(m.valideAvantLe.slice(0, 10)) + ' à ' + m.valideAvantLe.slice(11, 16)
+        + (m.conforme === 'Non' ? ' (non conforme : ' + m.demarches + ')' : '') + '. Toute modification l\'oblige à la valider à nouveau.'
+      : 'Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.';
+    majPresc();
+  }
+  /** Prescription à enregistrer : null si rien n'est rempli ; message d'erreur sinon. */
+  function lirePresc() {
+    if (!prestationPhyto($('f-prestation').value)) return { prescription: null };
+    var x = blocPresc.lirePrescription();
+    if (!x.culture && !x.produits.length && !x.cible && !x.parcelles.length) return { prescription: null };
+    var err = blocPresc.verifierPrescription(false);
+    return err ? { erreur: err } : { prescription: x };
+  }
 
   // Chauffeurs absents le jour prévu (connu pour la semaine affichée) : signalés dans la liste
   function marquerAbsents() {
@@ -672,6 +717,9 @@ textarea{min-height:64px;resize:vertical}
     };
     if (!m.client) return erreurFiche('Choisissez le client.');
     if (!m.prestation) return erreurFiche('Choisissez la prestation.');
+    var lp = lirePresc();
+    if (lp.erreur) return erreurFiche(lp.erreur);
+    m.prescription = lp.prescription;
     if (m.aPartirDu && m.auPlusTard && m.auPlusTard < m.aPartirDu) return erreurFiche('La date « au plus tard » est antérieure à la date « à partir du ».');
     if (m.chauffeur && m.datePrevue && absent(m.chauffeur, m.datePrevue)
       && !(enCours && enCours.chauffeur === m.chauffeur && enCours.datePrevue === m.datePrevue)) {
@@ -683,7 +731,8 @@ textarea{min-height:64px;resize:vertical}
     enregistrer(m, null)
       .then(function (r) {
         $('f-enregistrer').disabled = false; $('fiche').close();
-        toast((enCours ? 'Mission ' : 'Mission créée : ') + r.id + (r.datePrevue ? ' planifiée le ' + court(r.datePrevue) : ' en attente'));
+        toast((enCours ? 'Mission ' : 'Mission créée : ') + r.id + (r.datePrevue ? ' planifiée le ' + court(r.datePrevue) : ' en attente')
+          + (r.validationAnnulee ? '. Prescription modifiée : le chauffeur devra la valider à nouveau.' : ''), r.validationAnnulee);
         avertirSiMasquee(r);
         if (r.datePrevue && (r.datePrevue < D.lundi || r.datePrevue > decaler(D.lundi, 6))) {
           toast('Mission ' + r.id + ' planifiée le ' + court(r.datePrevue) + ' : hors de la semaine affichée.');
@@ -738,7 +787,7 @@ textarea{min-height:64px;resize:vertical}
   function majSarlBon() { $('b-sarl').hidden = $('b-client').value !== D.codeClientSarl; majPhytoBon(); }
 
   // Traitement phytosanitaire (phyto.js), comme sur le téléphone ; position GPS saisie en coordonnées
-  var blocPhyto = Phyto.monter($('b-phyto'), { bouton: 'lien-btn' });
+  var blocPhyto = Phyto.monter($('b-phyto'), { bouton: 'lien-btn', catalogue: catalogue, date: function () { return $('b-date').value; } });
   // Parcelles de la SARL (plusieurs possibles : quantités réparties au prorata des surfaces dans la feuille d'échange)
   var parcellesSarl = Phyto.parcelles($('b-parcelles'), { bouton: 'lien-btn',
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
@@ -770,8 +819,9 @@ textarea{min-height:64px;resize:vertical}
     $('b-lieu').value = m ? m.lieu : '';
     $('b-lignes').innerHTML = ''; ligneBon(m ? m.prestation : '');
     $('b-intrants').innerHTML = '';
-    blocPhyto.remplir(null);
-    parcellesSarl.remplir(null);
+    var pr = m && m.prescription ? Object.assign({}, m.prescription, { conforme: m.conforme, demarches: m.demarches, valideAvantLe: m.valideAvantLe }) : null;
+    parcellesSarl.remplir(pr && m.client === D.codeClientSarl ? pr.parcelles : null);
+    blocPhyto.remplir(pr);
     majSarlBon();
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
     $('dlg-bon').showModal();

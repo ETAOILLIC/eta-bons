@@ -337,6 +337,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
           + '<span class="quoi"><b>' + esc(m.clientNom) + '</b>'
           + '<span class="detail">' + esc(m.prestationLibelle) + (m.lieu ? ', ' + esc(m.lieu) : '') + '</span>'
           + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
+          + (m.prescription ? '<span class="consigne">' + (m.valideAvantLe ? '✓ Prescription phyto validée : chantier en cours' : 'Prescription phyto à vérifier et valider avant de démarrer') + '</span>' : '')
           + '</span></button></li>';
       }).join('');
       Array.prototype.forEach.call(ul.querySelectorAll('.mission'), function (b) {
@@ -362,8 +363,10 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     $('rappel').hidden = !m;
     if (m) {
       $('rappel').innerHTML = '<b>' + esc(m.clientNom) + '</b><br>' + esc(m.prestationLibelle)
-        + (m.lieu ? ', ' + esc(m.lieu) : '') + (m.consignes ? '<br>' + esc(m.consignes) : '');
+        + (m.lieu ? ', ' + esc(m.lieu) : '') + (m.consignes ? '<br>' + esc(m.consignes) : '')
+        + (m.prescription && !m.valideAvantLe ? '<br><b>Traitement : vérifiez la prescription du bureau, puis validez-la avant de démarrer.</b>' : '');
     }
+    $('f-client').disabled = false;
     $('f-date').value = D.aujourdhui;
     $('f-date').max = D.aujourdhui;
     $('f-client').innerHTML = '<option value="">Choisir le client</option>' + D.clients.map(function (c) {
@@ -371,7 +374,11 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     }).join('');
     $('f-client').value = m ? m.client : '';
     $('f-lieu').value = m ? m.lieu : '';
-    parcellesSarl.remplir(null);
+    // Prescription phyto de la mission (préparée au bureau, ou déjà validée sur place)
+    var pr = m && m.prescription ? Object.assign({}, m.prescription, { conforme: m.conforme, demarches: m.demarches, valideAvantLe: m.valideAvantLe }) : null;
+    parcellesSarl.remplir(pr && m.client === D.codeClientSarl ? pr.parcelles : null);
+    blocPhyto.remplir(pr);
+    if (pr && pr.valideAvantLe) $('f-client').disabled = true;
     $('parcelles-erreur').textContent = D.parcelles.erreur || '';
     $('parcelles-erreur').hidden = !D.parcelles.erreur;
     $('lignes').innerHTML = '';
@@ -403,7 +410,31 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     majLignes();
   }
   // ------------------------------------------------------------ Traitement phytosanitaire (phyto.js)
-  var blocPhyto = Phyto.monter($('phyto'), { bouton: 'secondaire', gps: true });
+  var blocPhyto = Phyto.monter($('phyto'), { bouton: 'secondaire', gps: true, etapes: true,
+    catalogue: function () { return D ? D.catalogue || [] : []; },
+    date: function () { return $('f-date').value; },
+    surErreur: function (t) { montrerErreur(t); alert(t); },
+    surValiderAvant: validerAvant });
+
+  /** « Valider et démarrer le chantier » : validation horodatée par le serveur (mission créée si le chantier n'en avait pas). */
+  function validerAvant(d) {
+    var l = lignePhyto();
+    if (!$('f-client').value) return Promise.reject(new Error('Choisissez le client avant de valider.'));
+    if (!l) return Promise.reject(new Error('Choisissez la prestation de traitement.'));
+    if (estSarl()) { var epa = parcellesSarl.verifier(true); if (epa) return Promise.reject(new Error(epa)); }
+    if (!confirm('Valider la prescription et démarrer le chantier ? La validation est enregistrée à votre nom, avec la date et l\'heure.')) return Promise.resolve(null);
+    return appel('validerAvant', { validation: { idMission: mission ? mission.id : '', client: $('f-client').value,
+      prestation: l.querySelector('.l-presta').value, lieu: $('f-lieu').value.trim(), phyto: d.phyto, conforme: d.conforme, demarches: d.demarches } })
+      .then(function (r) {
+        if (!mission) {
+          mission = { id: r.idMission, client: $('f-client').value };
+          $('titre-bon').textContent = 'Bon du chantier en cours';
+        }
+        $('f-client').disabled = true;
+        $('erreur').hidden = true;
+        return r;
+      });
+  }
   // Parcelles de la SARL (liste de l'exploitation) ; positions affichées seulement pour un traitement phyto
   var parcellesSarl = Phyto.parcelles($('f-parcelles'), { bouton: 'secondaire', gps: true,
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
