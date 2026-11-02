@@ -563,7 +563,7 @@ table.histo-detail .parc{white-space:nowrap}
 
   function ligneEd(l) {
     var div = document.createElement('div'); div.className = 'ligne-ed';
-    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + opts(D.prestations, l.code, 'Choisir la prestation', function (p) { return p.libelle + ' (' + p.code + ')'; }) + '</select>'
+    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + opts(prestationsParUsage(), l.code, 'Choisir la prestation', function (p) { return p.libelle + ' (' + p.code + ')'; }) + '</select>'
       + '<input class="e-qte" inputmode="decimal" aria-label="Quantité" placeholder="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>';
     var s = div.querySelector('.e-code'); s.value = l.code || '';
     div.querySelector('.e-qte').value = l.quantite === undefined || l.quantite === '' ? '' : String(l.quantite).replace('.', ',');
@@ -997,6 +997,12 @@ table.histo-detail .parc{white-space:nowrap}
   });
 
   // ------------------------------------------------------------ Clients, prestations, chauffeurs
+  /** Prestations pour les listes de choix : les plus récemment utilisées d'abord (l'onglet Prestations reste alphabétique). */
+  function prestationsParUsage() {
+    var rang = {};
+    (D.ordrePrestations || []).forEach(function (c, i) { rang[c] = i; });
+    return D.prestations.slice().sort(function (a, b) { return (a.code in rang ? rang[a.code] : 1e6) - (b.code in rang ? rang[b.code] : 1e6); });
+  }
   function listeRef() { return D[{ client: 'clients', prestation: 'prestations', chauffeur: 'chauffeurs', phyto: 'catalogue' }[onglet]]; }
   function dessinerReferentiel() {
     var conf = FICHES[onglet], f = $('filtre-ref').value.trim().toLowerCase(), inact = $('voir-inactifs').checked;
