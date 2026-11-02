@@ -145,6 +145,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
 .ligne-ed.intr{grid-template-columns:1fr 110px 120px 70px}
 .ligne-ed input,.ligne-ed select{margin-top:0}
 .ligne-ed .u{font-weight:700}
+.ligne-ed .lo-options{margin-bottom:4px}
 .retirer{background:none;border:0;color:var(--rouge);text-decoration:underline;font-size:13px}
 .histo{grid-column:1/-1;font-size:13px;color:var(--doux);background:var(--surface-2);border-radius:8px;padding:8px 10px}
 .histo ul{margin:4px 0 0;padding-left:18px}
@@ -322,6 +323,7 @@ table.histo-detail .parc{white-space:nowrap}
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="phyto.js"></script>
+<script src="lignes.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (même déploiement que les autres pages)
@@ -348,8 +350,10 @@ table.histo-detail .parc{white-space:nowrap}
       { cle: 'code', nom: 'Code article EBP', code: true }, { cle: 'unite', nom: 'Unité (ha, h, m³, t, u…)', requis: true },
       { cle: 'libelle', nom: 'Libellé', requis: true, large: true },
       { cle: 'actif', nom: 'Active (proposée aux chauffeurs et au planning)', caseACocher: true },
-      { cle: 'phyto', nom: 'Traitement phytosanitaire (demande les informations du registre phyto)', caseACocher: true, parDefaut: false }],
-      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['phyto', 'Phyto'], ['actif', 'Active']] },
+      { cle: 'phyto', nom: 'Traitement phytosanitaire (demande les informations du registre phyto)', caseACocher: true, parDefaut: false },
+      { cle: 'options', nom: 'Options facturées à part : codes des prestations « supplément », séparés par des virgules (ex. BBPB)', large: true },
+      { cle: 'variantes', nom: 'Variantes à choisir : codes des articles proposés à la place de celui-ci (ex. broyeur 3 m, broyeur 4 m)', large: true }],
+      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['options', 'Options'], ['variantes', 'Variantes'], ['phyto', 'Phyto'], ['actif', 'Active']] },
     chauffeur: { titre: 'Chauffeurs', un: 'chauffeur', champs: [
       { cle: 'code', nom: 'Code', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
       { cle: 'telephone', nom: 'Téléphone portable' },
@@ -563,10 +567,14 @@ table.histo-detail .parc{white-space:nowrap}
 
   function ligneEd(l) {
     var div = document.createElement('div'); div.className = 'ligne-ed';
-    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + opts(prestationsParUsage(), l.code, 'Choisir la prestation', function (p) { return p.libelle + ' (' + p.code + ')'; }) + '</select>'
-      + '<input class="e-qte" inputmode="decimal" aria-label="Quantité" placeholder="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>';
+    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + opts(LignesOptions.principales(prestationsParUsage(), l.code), l.code, 'Choisir la prestation', function (p) { return p.libelle + ' (' + p.code + ')'; }) + '</select>'
+      + '<input class="e-qte" inputmode="decimal" aria-label="Quantité" placeholder="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>'
+      + '<div class="lo-options" hidden></div>';
     var s = div.querySelector('.e-code'); s.value = l.code || '';
     div.querySelector('.e-qte').value = l.quantite === undefined || l.quantite === '' ? '' : String(l.quantite).replace('.', ',');
+    div._opt = LignesOptions.attacher({ prestations: function () { return D.prestations; }, select: s,
+      qte: div.querySelector('.e-qte'), conteneur: div.querySelector('.lo-options') });
+    div._opt.remplir(l.options, l.variante);
     function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
     s.onchange = u; u();
     div.querySelector('.retirer').onclick = function () { div.remove(); };
@@ -592,10 +600,7 @@ table.histo-detail .parc{white-space:nowrap}
   var parcellesSarl = Phyto.parcelles($('b-parcelles'), { bouton: 'lien-btn',
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
   function estPhyto() {
-    return Array.prototype.some.call($('b-lignes').querySelectorAll('.e-code'), function (s) {
-      var p = D.prestations.filter(function (x) { return x.code === s.value; })[0];
-      return p && p.phyto;
-    });
+    return Array.prototype.some.call($('b-lignes').children, function (d) { return !!(d._opt && d._opt.phyto()); });
   }
   function majPhyto() {
     var ph = estPhyto(), sarl = $('b-client').value === D.codeClientSarl;
@@ -616,7 +621,7 @@ table.histo-detail .parc{white-space:nowrap}
     $('b-client').value = b.client;
     $('b-lieu').value = b.lieu;
     parcellesSarl.remplir(b.parcelles);
-    $('b-lignes').innerHTML = ''; b.lignes.forEach(ligneEd); if (!b.lignes.length) ligneEd({});
+    $('b-lignes').innerHTML = ''; LignesOptions.grouper(b.lignes, D.prestations).forEach(function (l) { ligneEd(l); }); if (!b.lignes.length) ligneEd({});
     $('b-intrants').innerHTML = ''; b.intrants.forEach(intrantEd);
     blocPhyto.remplir(b.phyto ? Object.assign({}, b.phyto, { parcelles: b.parcelles }) : null);
     $('b-fiche').hidden = !b.phyto;
@@ -643,16 +648,21 @@ table.histo-detail .parc{white-space:nowrap}
     var donnees = {
       numero: b.numero, date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
       parcelles: sarl ? parcellesSarl.lire() : [], heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
-      lignes: Array.prototype.map.call($('b-lignes').children, function (d) { return { code: d.querySelector('.e-code').value, quantite: d.querySelector('.e-qte').value.trim() }; }),
+      lignes: Array.prototype.reduce.call($('b-lignes').children, function (r, d) {
+        return r.concat([{ code: d._opt.code(), quantite: d.querySelector('.e-qte').value.trim() }], d._opt.lire());
+      }, []),
       phyto: estPhyto() ? blocPhyto.lire() : null,
       intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
       })
     };
     if (!donnees.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
-    for (var i = 0; i < donnees.lignes.length; i++) {
-      if (!donnees.lignes[i].code) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
-      if (!(nombre(donnees.lignes[i].quantite) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez une quantité supérieure à zéro.');
+    var ls = $('b-lignes').children;
+    for (var i = 0; i < ls.length; i++) {
+      if (!ls[i].querySelector('.e-code').value) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
+      var ev = ls[i]._opt.code() ? '' : ls[i]._opt.verifier(i + 1); if (ev) return erreurBon(ev);
+      if (!(nombre(ls[i].querySelector('.e-qte').value) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez une quantité supérieure à zéro.');
+      var eo = ls[i]._opt.verifier(i + 1); if (eo) return erreurBon(eo);
     }
     if (sarl) { var epa = parcellesSarl.verifier(!!donnees.phyto); if (epa) return erreurBon(epa); }
     if (donnees.phyto) {
@@ -1022,7 +1032,7 @@ table.histo-detail .parc{white-space:nowrap}
             + (sms ? '<a class="petit" href="' + esc(sms) + '">Envoyer par SMS</a>' : '')
             + '<button type="button" class="petit" data-renouveler="' + esc(x.code) + '">Nouveau lien</button></div>' : '') + '</td>';
         }
-        return '<td>' + (typeof v === 'number' ? nb(v) : esc(v)) + '</td>';
+        return '<td>' + (typeof v === 'number' ? nb(v) : Array.isArray(v) ? esc(v.join(', ')) : esc(v)) + '</td>';
       }).join('') + '</tr>';
     }).join('') : '<tr><td colspan="' + conf.colonnes.length + '">Aucune fiche.</td></tr>';
   }
@@ -1060,7 +1070,7 @@ table.histo-detail .parc{white-space:nowrap}
     conf.champs.forEach(function (c) {
       var i = document.querySelector('#f-champs [data-cle="' + c.cle + '"]');
       if (c.caseACocher) i.checked = x ? !!x[c.cle] : c.parDefaut !== false;
-      else i.value = !x || x[c.cle] == null ? '' : typeof x[c.cle] === 'number' ? String(x[c.cle]).replace('.', ',') : x[c.cle];
+      else i.value = !x || x[c.cle] == null ? '' : typeof x[c.cle] === 'number' ? String(x[c.cle]).replace('.', ',') : Array.isArray(x[c.cle]) ? x[c.cle].join(', ') : x[c.cle];
     });
     $('f-erreur').hidden = true; $('f-enregistrer').disabled = false;
     $('dlg-fiche').showModal();

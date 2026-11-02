@@ -155,6 +155,10 @@ textarea{min-height:64px;resize:vertical}
 .ligne-ed.intr{grid-template-columns:1fr 100px 110px 64px}
 .ligne-ed input,.ligne-ed select{display:block;width:100%;font-size:15px;background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px}
 .ligne-ed .u{font-weight:700}
+.ligne-ed .lo-options{margin-bottom:4px}
+.equipier{display:grid;grid-template-columns:1fr 1fr 64px;gap:8px;align-items:center;margin-bottom:6px}
+.equipier select{display:block;width:100%;font-size:15px;background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px;margin:0}
+.equipe-membre{display:block;width:100%;text-align:left;background:var(--vert-pale);border:0;border-radius:7px;padding:6px 10px;margin-bottom:4px;font-size:14px;cursor:pointer;color:var(--encre)}
 .retirer{background:none;border:0;color:var(--rouge);text-decoration:underline;font-size:13px}
 .phyto-manque{color:var(--rouge);font-weight:700;white-space:nowrap}
 .lien-btn{background:none;border:0;color:var(--vert);font-weight:700;text-decoration:underline;padding:4px 0}
@@ -247,6 +251,13 @@ textarea{min-height:64px;resize:vertical}
       <label>Chauffeur
         <select id="f-chauffeur"></select>
       </label>
+      <div class="groupe" id="f-equipe-groupe">
+        <h4>Chantier à plusieurs chauffeurs</h4>
+        <div id="f-equipe-existante"></div>
+        <div id="f-equipe"></div>
+        <button type="button" class="lien-btn" id="f-ajout-equipier">+ Ajouter un chauffeur au chantier</button>
+        <p class="aide" style="margin:6px 0 0">Chaque chauffeur reçoit sa propre mission (mêmes client, lieu, dates et consignes), avec sa prestation, et fait son propre bon.</p>
+      </div>
       <div class="groupe" id="f-phyto-groupe" hidden>
         <h4>Prescription phyto (avant application)</h4>
         <p class="aide" id="f-phyto-etat" style="margin:0 0 8px">Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.</p>
@@ -327,6 +338,7 @@ textarea{min-height:64px;resize:vertical}
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="phyto.js"></script>
+<script src="lignes.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (même déploiement que la page chauffeur)
@@ -444,6 +456,7 @@ textarea{min-height:64px;resize:vertical}
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
       + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
+      + (m.equipe && m.equipe.length ? '<span class="dates">équipe de ' + (m.equipe.length + 1) + ' chauffeurs</span>' : '')
       + (m.prescription && m.statut !== 'Faite' ? '<span class="dates">' + (m.valideAvantLe ? '✓ prescription validée' : 'prescription phyto') + '</span>' : '')
       + (absent && m.statut !== 'Faite' ? '<span class="conflit-txt">⚠ chauffeur absent : à replanifier</span>' : '')
       + '</button>';
@@ -544,6 +557,7 @@ textarea{min-height:64px;resize:vertical}
         occupe--;
         var i = D.missions.indexOf(missionParId(r.id) || {});
         if (i >= 0) D.missions[i] = r; else D.missions.push(r);
+        (r.ajoutees || []).forEach(function (x) { D.missions.push(x); });
         dessiner(); etat('Enregistré');
         return r;
       })
@@ -564,6 +578,7 @@ textarea{min-height:64px;resize:vertical}
     var nouvelle = JSON.parse(JSON.stringify(m));
     nouvelle.chauffeur = chauffeur; nouvelle.datePrevue = date;
     delete nouvelle.prescription; // la prescription n'est pas modifiée par un déplacement
+    delete nouvelle.equipe; delete nouvelle.ajoutees;
     // Affichage immédiat, confirmé ou annulé par la réponse du serveur
     D.missions[D.missions.indexOf(m)] = nouvelle;
     nouvelle.statut = date ? 'Planifiée' : 'À planifier';
@@ -642,13 +657,14 @@ textarea{min-height:64px;resize:vertical}
     $('f-info').hidden = !fige;
     $('f-info').textContent = fige ? 'Bon ' + (m.numeroBon || '') + ' reçu : la mission ne peut plus être modifiée.' : '';
     $('f-client').innerHTML = options(D.clients, v.client, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
-    $('f-prestation').innerHTML = options(D.prestations, v.prestation, 'Choisir la prestation', function (p) { return p.libelle + (p.unite ? ' (' + p.unite + ')' : ''); });
+    $('f-prestation').innerHTML = options(LignesOptions.principales(D.prestations, v.prestation), v.prestation, 'Choisir la prestation', function (p) { return p.libelle + (p.unite ? ' (' + p.unite + ')' : ''); });
     $('f-chauffeur').innerHTML = options(D.chauffeurs.filter(function (c) { return c.actif; }), v.chauffeur, 'Non affecté', function (c) { return c.nom; });
     $('f-client').value = v.client; $('f-prestation').value = v.prestation; $('f-chauffeur').value = v.chauffeur;
     setTimeout(marquerAbsents, 0);
     $('f-lieu').value = v.lieu; $('f-consignes').value = v.consignes;
     $('f-apartir').value = v.aPartirDu; $('f-auplustard').value = v.auPlusTard; $('f-jour').value = v.datePrevue;
     remplirPresc(m);
+    remplirEquipe(m);
     Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
     $('f-enregistrer').hidden = fige;
     $('f-annuler-mission').hidden = !m || fige;
@@ -665,7 +681,11 @@ textarea{min-height:64px;resize:vertical}
   var blocPresc = Phyto.monter($('f-phyto'), { mode: 'prescription', bouton: 'lien-btn', catalogue: catalogue });
   var parcellesPresc = Phyto.parcelles($('f-parcelles-sarl'), { bouton: 'lien-btn',
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPresc.recalculer(); } });
-  function prestationPhyto(code) { var p = D.prestations.filter(function (x) { return x.code === code; })[0]; return !!(p && p.phyto); }
+  function prestationPhyto(code) {
+    var par = {}; D.prestations.forEach(function (x) { par[x.code] = x; });
+    var p = par[code];
+    return !!(p && (p.phyto || (p.options || []).some(function (c) { return par[c] && par[c].phyto; })));
+  }
   function majPresc() {
     var ph = prestationPhyto($('f-prestation').value), sarl = $('f-client').value === D.codeClientSarl;
     $('f-phyto-groupe').hidden = !ph;
@@ -685,6 +705,43 @@ textarea{min-height:64px;resize:vertical}
       : 'Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.';
     majPresc();
   }
+  // Mission d'équipe : autres chauffeurs du chantier (existants) et chauffeurs à ajouter
+  function remplirEquipe(m) {
+    $('f-equipe').innerHTML = '';
+    var l = (m && m.equipe) || [];
+    $('f-equipe-existante').innerHTML = l.map(function (x) {
+      return '<button type="button" class="equipe-membre" data-mission="' + esc(x.id) + '">' + esc(x.id) + ' – ' + esc(x.chauffeurNom || 'chauffeur à choisir')
+        + ' : ' + esc(x.prestationLibelle) + (x.datePrevue ? ' (' + court(x.datePrevue) + ')' : '') + (x.statut === 'Faite' ? ' – faite' : '') + '</button>';
+    }).join('');
+    $('f-equipe-groupe').hidden = !!(m && m.statut === 'Faite');
+  }
+  function ajouterEquipier() {
+    var d = document.createElement('div'); d.className = 'equipier';
+    d.innerHTML = '<select class="eq-chauffeur" aria-label="Chauffeur">' + options(D.chauffeurs.filter(function (c) { return c.actif; }), '', 'Chauffeur', function (c) { return c.nom; }) + '</select>'
+      + '<select class="eq-prestation" aria-label="Prestation">' + options(LignesOptions.principales(D.prestations, ''), $('f-prestation').value, 'Prestation', function (p) { return p.libelle; }) + '</select>'
+      + '<button type="button" class="retirer">Retirer</button>';
+    d.querySelector('.eq-prestation').value = $('f-prestation').value; // même prestation par défaut
+    d.querySelector('.retirer').onclick = function () { d.remove(); };
+    $('f-equipe').appendChild(d);
+  }
+  $('f-ajout-equipier').onclick = ajouterEquipier;
+  $('f-equipe-existante').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-mission]'); if (!b) return;
+    var x = missionParId(b.getAttribute('data-mission'));
+    if (!x) { toast('Mission ' + b.getAttribute('data-mission') + ' hors de la semaine affichée.'); return; }
+    $('fiche').close(); ouvrirFiche(x);
+  });
+  function lireEquipe() {
+    var r = [], err = '';
+    Array.prototype.forEach.call($('f-equipe').children, function (d, i) {
+      var c = d.querySelector('.eq-chauffeur').value, p = d.querySelector('.eq-prestation').value;
+      if (!c && !p) return;
+      if (!c || !p) err = err || 'Chantier à plusieurs chauffeurs, ligne ' + (i + 1) + ' : choisissez le chauffeur et sa prestation.';
+      r.push({ chauffeur: c, prestation: p });
+    });
+    return { equipe: r, erreur: err };
+  }
+
   /** Prescription à enregistrer : null si rien n'est rempli ; message d'erreur sinon. */
   function lirePresc() {
     if (!prestationPhyto($('f-prestation').value)) return { prescription: null };
@@ -720,6 +777,10 @@ textarea{min-height:64px;resize:vertical}
     var lp = lirePresc();
     if (lp.erreur) return erreurFiche(lp.erreur);
     m.prescription = lp.prescription;
+    var le = lireEquipe();
+    if (le.erreur) return erreurFiche(le.erreur);
+    m.equipe = le.equipe;
+    if (le.equipe.length && !m.chauffeur) return erreurFiche('Chantier à plusieurs chauffeurs : choisissez aussi le chauffeur de cette mission.');
     if (m.aPartirDu && m.auPlusTard && m.auPlusTard < m.aPartirDu) return erreurFiche('La date « au plus tard » est antérieure à la date « à partir du ».');
     if (m.chauffeur && m.datePrevue && absent(m.chauffeur, m.datePrevue)
       && !(enCours && enCours.chauffeur === m.chauffeur && enCours.datePrevue === m.datePrevue)) {
@@ -731,7 +792,9 @@ textarea{min-height:64px;resize:vertical}
     enregistrer(m, null)
       .then(function (r) {
         $('f-enregistrer').disabled = false; $('fiche').close();
+        if ((r.ajoutees || []).length) charger(true); // listes d'équipe des autres missions du chantier
         toast((enCours ? 'Mission ' : 'Mission créée : ') + r.id + (r.datePrevue ? ' planifiée le ' + court(r.datePrevue) : ' en attente')
+          + ((r.ajoutees || []).length ? ' ; équipe : ' + r.ajoutees.map(function (x) { return x.id; }).join(', ') : '')
           + (r.validationAnnulee ? '. Prescription modifiée : le chauffeur devra la valider à nouveau.' : ''), r.validationAnnulee);
         avertirSiMasquee(r);
         if (r.datePrevue && (r.datePrevue < D.lundi || r.datePrevue > decaler(D.lundi, 6))) {
@@ -768,9 +831,12 @@ textarea{min-height:64px;resize:vertical}
   }
   function ligneBon(code) {
     var div = document.createElement('div'); div.className = 'ligne-ed';
-    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + optionsActives(D.prestations, 'Choisir la prestation', function (p) { return p.libelle; }) + '</select>'
-      + '<input class="e-qte" inputmode="decimal" autocomplete="off" placeholder="Quantité" aria-label="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>';
+    div.innerHTML = '<select class="e-code" aria-label="Prestation">' + optionsActives(LignesOptions.principales(D.prestations, code), 'Choisir la prestation', function (p) { return p.libelle; }) + '</select>'
+      + '<input class="e-qte" inputmode="decimal" autocomplete="off" placeholder="Quantité" aria-label="Quantité"><span class="u"></span><button type="button" class="retirer">Retirer</button>'
+      + '<div class="lo-options" hidden></div>';
     var s = div.querySelector('.e-code'); s.value = code || '';
+    div._opt = LignesOptions.attacher({ prestations: function () { return D.prestations; }, select: s,
+      qte: div.querySelector('.e-qte'), conteneur: div.querySelector('.lo-options') });
     function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
     s.onchange = u; u();
     div.querySelector('.retirer').onclick = function () { div.remove(); };
@@ -792,9 +858,10 @@ textarea{min-height:64px;resize:vertical}
   var parcellesSarl = Phyto.parcelles($('b-parcelles'), { bouton: 'lien-btn',
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
   function estPhytoBon() {
-    return Array.prototype.some.call($('b-lignes').querySelectorAll('.e-code'), function (s) {
-      var p = D.prestations.filter(function (x) { return x.code === s.value; })[0];
-      return p && p.phyto;
+    return Array.prototype.some.call($('b-lignes').children, function (d) {
+      var ph = d._opt && d._opt.phyto();
+      if (ph && ph.parOption) blocPhyto.proposerMateriel('semoir'); // option phyto = incorporation au semis
+      return !!ph;
     });
   }
   function majPhytoBon() {
@@ -822,6 +889,7 @@ textarea{min-height:64px;resize:vertical}
     var pr = m && m.prescription ? Object.assign({}, m.prescription, { conforme: m.conforme, demarches: m.demarches, valideAvantLe: m.valideAvantLe }) : null;
     parcellesSarl.remplir(pr && m.client === D.codeClientSarl ? pr.parcelles : null);
     blocPhyto.remplir(pr);
+    if (pr) $('b-lignes').firstChild._opt.cocherPhyto(); // prescription : l'option phyto de la prestation est cochée
     majSarlBon();
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
     $('dlg-bon').showModal();
@@ -840,7 +908,9 @@ textarea{min-height:64px;resize:vertical}
       idEnvoi: idEnvoiBon, idMission: bonMission ? bonMission.id : '', chauffeur: $('b-chauffeur').value,
       date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
       parcelles: sarl ? parcellesSarl.lire() : [], heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
-      lignes: Array.prototype.map.call($('b-lignes').children, function (d) { return { code: d.querySelector('.e-code').value, quantite: d.querySelector('.e-qte').value.trim() }; }),
+      lignes: Array.prototype.reduce.call($('b-lignes').children, function (r, d) {
+        return r.concat([{ code: d._opt.code(), quantite: d.querySelector('.e-qte').value.trim() }], d._opt.lire());
+      }, []),
       phyto: estPhytoBon() ? blocPhyto.lire() : null,
       intrants: !sarl || estPhytoBon() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
@@ -851,9 +921,12 @@ textarea{min-height:64px;resize:vertical}
     if (!bon.client) return erreurBon('Choisissez le client.');
     if (sarl) { var epa = parcellesSarl.verifier(!!bon.phyto); if (epa) return erreurBon(epa); }
     if (!bon.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
-    for (var i = 0; i < bon.lignes.length; i++) {
-      if (!bon.lignes[i].code) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
-      if (!(nombre(bon.lignes[i].quantite) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
+    var ls = $('b-lignes').children;
+    for (var i = 0; i < ls.length; i++) {
+      if (!ls[i].querySelector('.e-code').value) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
+      var ev = ls[i]._opt.code() ? '' : ls[i]._opt.verifier(i + 1); if (ev) return erreurBon(ev);
+      if (!(nombre(ls[i].querySelector('.e-qte').value) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
+      var eo = ls[i]._opt.verifier(i + 1); if (eo) return erreurBon(eo);
     }
     if (bon.phyto) {
       var ep = blocPhyto.verifier(); if (ep) return erreurBon(ep);

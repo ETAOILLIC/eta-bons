@@ -1,6 +1,6 @@
 /**
  * ETA Oillic – bloc « Traitement phytosanitaire » des bons (page chauffeur, planning, gestion)
- * Version 1.3 – 2026-11-02 : fiche chantier (avant application / validation / après application / informations client),
+ * Version 1.4 – 2026-11-03 : matériel proposé (incorporation au semis) ; 1.3 : fiche chantier (avant application / validation / après application / informations client),
  *   catalogue des produits, météo MET Norway
  *
  * Informations du registre (arrêté du 24 décembre 2025, annexes I et II) et du référentiel d'agrément :
@@ -552,6 +552,7 @@
       q('.ph-bbch-autre-l').hidden = s.value !== 'autre';
     }
     q('.ph-culture-liste').onchange = function () { majStades(''); };
+    q('.ph-materiel').addEventListener('change', function () { q('.ph-materiel').setAttribute('data-touche', '1'); });
     q('.ph-bbch-liste').onchange = function () { q('.ph-bbch-autre-l').hidden = q('.ph-bbch-liste').value !== 'autre'; };
     function lireBbch() { var v = q('.ph-bbch-liste').value; return v === 'autre' ? q('.ph-bbch-autre').value.trim() : v; }
     function categorie() { var v = q('.ph-categorie').value; return v === 'autre' ? q('.ph-categorie-autre').value.trim() : v; }
@@ -827,6 +828,12 @@
       estValide: function () { return !!valide; },
       chercherMeteo: chercherMeteo,
       proposerSurface: function (ha) { liste().proposerSurface(ha); },
+      /** Matériel proposé (ex. semoir pour une incorporation au semis), tant que l'utilisateur ne l'a pas choisi. */
+      proposerMateriel: function (m) {
+        var s = q('.ph-materiel');
+        if (verrouille() || s.getAttribute('data-touche') || !MATERIELS.some(function (x) { return x[0] === m; }) || s.value === m) return;
+        s.value = m; majCalculs();
+      },
       /** Parcelles saisies ailleurs (bloc SARL) : le bloc phyto n'affiche plus les siennes. */
       utiliserParcelles: function (ext) {
         externes = ext || null;

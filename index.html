@@ -229,6 +229,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
 <div class="chargement" id="chargement">Chargement…</div>
 
 <script src="phyto.js"></script>
+<script src="lignes.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (déploiement « Application Web », se termine par /exec)
@@ -337,6 +338,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
           + '<span class="quoi"><b>' + esc(m.clientNom) + '</b>'
           + '<span class="detail">' + esc(m.prestationLibelle) + (m.lieu ? ', ' + esc(m.lieu) : '') + '</span>'
           + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
+          + (m.equipe && m.equipe.length ? '<span class="consigne">Équipe : ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + '</span>' : '')
           + (m.prescription ? '<span class="consigne">' + (m.valideAvantLe ? '✓ Prescription phyto validée : chantier en cours' : 'Prescription phyto à vérifier et valider avant de démarrer') + '</span>' : '')
           + '</span></button></li>';
       }).join('');
@@ -364,6 +366,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (m) {
       $('rappel').innerHTML = '<b>' + esc(m.clientNom) + '</b><br>' + esc(m.prestationLibelle)
         + (m.lieu ? ', ' + esc(m.lieu) : '') + (m.consignes ? '<br>' + esc(m.consignes) : '')
+        + (m.equipe && m.equipe.length ? '<br>Avec ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + ' : chacun fait son bon.' : '')
         + (m.prescription && !m.valideAvantLe ? '<br><b>Traitement : vérifiez la prescription du bureau, puis validez-la avant de démarrer.</b>' : '');
     }
     $('f-client').disabled = false;
@@ -383,6 +386,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     $('parcelles-erreur').hidden = !D.parcelles.erreur;
     $('lignes').innerHTML = '';
     ajouterLigne(m ? m.prestation : '');
+    if (pr) $('lignes').querySelector('.ligne')._opt.cocherPhyto(); // prescription : l'option phyto de la prestation est cochée
     $('intrants').innerHTML = '';
     majSarl();
     $('erreur').hidden = true;
@@ -394,12 +398,16 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     var div = document.createElement('div');
     div.className = 'ligne';
     div.innerHTML = '<select class="l-presta" aria-label="Prestation"><option value="">Choisir la prestation</option>'
-      + D.prestations.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('')
+      + LignesOptions.principales(D.prestations, code).map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.libelle) + '</option>'; }).join('')
       + '</select>'
       + '<div class="qte"><input class="l-qte" type="text" inputmode="decimal" autocomplete="off" placeholder="Quantité" aria-label="Quantité"><span class="l-unite"></span></div>'
+      + '<div class="lo-options" hidden></div>'
       + '<button type="button" class="retirer">Retirer cette prestation</button>';
     var sel = div.querySelector('.l-presta');
     sel.value = code || '';
+    // Options de la prestation (suppléments) : cases à cocher sous la ligne (lignes.js)
+    div._opt = LignesOptions.attacher({ prestations: function () { return D.prestations; }, select: sel,
+      qte: div.querySelector('.l-qte'), conteneur: div.querySelector('.lo-options') });
     function unite() {
       var p = D.prestations.filter(function (x) { return x.code === sel.value; })[0];
       div.querySelector('.l-unite').textContent = p ? p.unite : '';
@@ -424,7 +432,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (estSarl()) { var epa = parcellesSarl.verifier(true); if (epa) return Promise.reject(new Error(epa)); }
     if (!confirm('Valider la prescription et démarrer le chantier ? La validation est enregistrée à votre nom, avec la date et l\'heure.')) return Promise.resolve(null);
     return appel('validerAvant', { validation: { idMission: mission ? mission.id : '', client: $('f-client').value,
-      prestation: l.querySelector('.l-presta').value, lieu: $('f-lieu').value.trim(), phyto: d.phyto, conforme: d.conforme, demarches: d.demarches } })
+      prestation: l._opt.code(), lieu: $('f-lieu').value.trim(), phyto: d.phyto, conforme: d.conforme, demarches: d.demarches } })
       .then(function (r) {
         if (!mission) {
           mission = { id: r.idMission, client: $('f-client').value };
@@ -438,10 +446,11 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
   // Parcelles de la SARL (liste de l'exploitation) ; positions affichées seulement pour un traitement phyto
   var parcellesSarl = Phyto.parcelles($('f-parcelles'), { bouton: 'secondaire', gps: true,
     codes: function () { return D ? D.parcelles.liste : []; }, surChangement: function () { blocPhyto.recalculer(); } });
+  /** Ligne du traitement phyto (prestation phyto, ou option phyto cochée) : l._ph = { code, quantite, unite, parOption }. */
   function lignePhyto() {
     return Array.prototype.filter.call($('lignes').querySelectorAll('.ligne'), function (l) {
-      var p = D.prestations.filter(function (x) { return x.code === l.querySelector('.l-presta').value; })[0];
-      return p && p.phyto;
+      l._ph = l._opt.phyto();
+      return !!l._ph;
     })[0];
   }
   function estPhyto() { return !!lignePhyto(); }
@@ -454,8 +463,8 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     blocPhyto.utiliserParcelles(sarl ? parcellesSarl : null);
     parcellesSarl.afficherPositions(!!l);
     if (!l) return;
-    var p = D.prestations.filter(function (x) { return x.code === l.querySelector('.l-presta').value; })[0];
-    if (/^ha$/i.test(p.unite)) (sarl ? parcellesSarl : blocPhyto).proposerSurface(nombre(l.querySelector('.l-qte').value));
+    if (/^ha$/i.test(l._ph.unite)) (sarl ? parcellesSarl : blocPhyto).proposerSurface(nombre(l._ph.quantite));
+    if (l._ph.parOption) blocPhyto.proposerMateriel('semoir'); // option phyto = incorporation au semis
   }
 
   function majLignes() {
@@ -495,9 +504,9 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       client: $('f-client').value,
       lieu: $('f-lieu').value.trim(),
       parcelles: sarl ? parcellesSarl.lire() : [],
-      lignes: Array.prototype.map.call($('lignes').querySelectorAll('.ligne'), function (l) {
-        return { code: l.querySelector('.l-presta').value, quantite: l.querySelector('.l-qte').value.trim() };
-      }),
+      lignes: Array.prototype.reduce.call($('lignes').querySelectorAll('.ligne'), function (r, l) {
+        return r.concat([{ code: l._opt.code(), quantite: l.querySelector('.l-qte').value.trim() }], l._opt.lire());
+      }, []),
       phyto: estPhyto() ? blocPhyto.lire() : null,
       intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('intrants').querySelectorAll('.intrant'), function (x) {
         return { produit: x.querySelector('.i-produit').value.trim(), dose: x.querySelector('.i-dose').value.trim(), unite: x.querySelector('.i-unite').value };
@@ -512,9 +521,12 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (b.date > D.aujourdhui) return "La date de l'intervention ne peut pas être dans le futur.";
     if (!b.client) return 'Choisissez le client.';
     if (estSarl()) { var epa = parcellesSarl.verifier(estPhyto()); if (epa) return epa; }
-    for (var i = 0; i < b.lignes.length; i++) {
-      if (!b.lignes[i].code) return 'Prestation ' + (i + 1) + ' : choisissez la prestation.';
-      if (!(nombre(b.lignes[i].quantite) > 0)) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
+    var ls = $('lignes').querySelectorAll('.ligne');
+    for (var i = 0; i < ls.length; i++) {
+      if (!ls[i].querySelector('.l-presta').value) return 'Prestation ' + (i + 1) + ' : choisissez la prestation.';
+      var ev = ls[i]._opt.code() ? '' : ls[i]._opt.verifier(i + 1); if (ev) return ev;
+      if (!(nombre(ls[i].querySelector('.l-qte').value) > 0)) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
+      var eo = ls[i]._opt.verifier(i + 1); if (eo) return eo;
     }
     for (var j = 0; j < b.intrants.length; j++) {
       var x = b.intrants[j];
