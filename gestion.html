@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- ETA Oillic – gestion.html – Version 0.18 – 2026-11-03 (plages, preneurs et remorques : precisions.js) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -272,6 +273,10 @@ table.histo-detail .parc{white-space:nowrap}
         <div id="b-lignes"></div>
         <button type="button" class="lien-btn" id="b-ajout-ligne">+ Ajouter une prestation</button>
       </div>
+      <div class="groupe" id="b-prec-groupe" hidden>
+        <h4>Plages et preneurs</h4>
+        <div id="b-prec"></div>
+      </div>
       <div class="groupe" id="b-phyto-groupe" hidden>
         <h4>Traitement phytosanitaire <small>(une culture par bon, une ou plusieurs parcelles)</small></h4>
         <div id="b-phyto"></div>
@@ -324,6 +329,7 @@ table.histo-detail .parc{white-space:nowrap}
 
 <script src="phyto.js"></script>
 <script src="lignes.js"></script>
+<script src="precisions.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (même déploiement que les autres pages)
@@ -344,16 +350,20 @@ table.histo-detail .parc{white-space:nowrap}
       { cle: 'siret', nom: 'SIRET (14 chiffres, pour les traitements phyto)' },
       { cle: 'contact', nom: 'Contact (nom prénom)' }, { cle: 'email', nom: 'E-mail' },
       { cle: 'telFixe', nom: 'Tél fixe' }, { cle: 'portable', nom: 'Portable' },
+      { cle: 'plages', nom: 'Plages (collecte des algues) : noms séparés par des virgules, ex. Penvins, Kerfontaine', large: true },
       { cle: 'actif', nom: 'Actif (proposé aux chauffeurs et au planning)', caseACocher: true }],
-      colonnes: [['code', 'Code EBP'], ['nom', 'Nom'], ['commune', 'Commune'], ['actif', 'Actif']] },
+      colonnes: [['code', 'Code EBP'], ['nom', 'Nom'], ['commune', 'Commune'], ['plages', 'Plages'], ['actif', 'Actif']] },
     prestation: { titre: 'Prestations', un: 'prestation', champs: [
       { cle: 'code', nom: 'Code article EBP', code: true }, { cle: 'unite', nom: 'Unité (ha, h, m³, t, u…)', requis: true },
       { cle: 'libelle', nom: 'Libellé', requis: true, large: true },
       { cle: 'actif', nom: 'Active (proposée aux chauffeurs et au planning)', caseACocher: true },
       { cle: 'phyto', nom: 'Traitement phytosanitaire (demande les informations du registre phyto)', caseACocher: true, parDefaut: false },
       { cle: 'options', nom: 'Options facturées à part : codes des prestations « supplément », séparés par des virgules (ex. BBPB)', large: true },
-      { cle: 'variantes', nom: 'Variantes à choisir : codes des articles proposés à la place de celui-ci (ex. broyeur 3 m, broyeur 4 m)', large: true }],
-      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['options', 'Options'], ['variantes', 'Variantes'], ['phyto', 'Phyto'], ['actif', 'Active']] },
+      { cle: 'variantes', nom: 'Variantes à choisir : codes des articles proposés à la place de celui-ci (ex. broyeur 3 m, broyeur 4 m)', large: true },
+      { cle: 'prec_plage', nom: 'Demande la ou les plages (choisies dans la liste des plages du client)', caseACocher: true, parDefaut: false },
+      { cle: 'prec_remorques', nom: 'Demande les preneurs et le nombre de remorques envoyées chez chacun', caseACocher: true, parDefaut: false },
+      { cle: 'prec_preneur', nom: 'Demande le preneur, sans nombre de remorques (ex. chez qui on épand)', caseACocher: true, parDefaut: false }],
+      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['options', 'Options'], ['variantes', 'Variantes'], ['precisions', 'Précisions'], ['phyto', 'Phyto'], ['actif', 'Active']] },
     chauffeur: { titre: 'Chauffeurs', un: 'chauffeur', champs: [
       { cle: 'code', nom: 'Code', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
       { cle: 'telephone', nom: 'Téléphone portable' },
@@ -411,6 +421,7 @@ table.histo-detail .parc{white-space:nowrap}
     return appel('gestionCharger', { annee: anneeHisto })
       .then(function (d) {
         occupe--; D = d; $('chargement').hidden = true; $('alerte').hidden = true;
+        D.prestations.forEach(function (p) { ['plage', 'remorques', 'preneur'].forEach(function (k) { p['prec_' + k] = (p.precisions || []).indexOf(k) >= 0; }); });
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         afficher();
       })
@@ -499,7 +510,7 @@ table.histo-detail .parc{white-space:nowrap}
       + '</div><div class="bons"><h3>Détail des bons</h3><table class="liste"><thead><tr><th><input type="checkbox" data-tout="' + esc(code) + '"'
       + (coches.length === bons.length ? ' checked' : '') + ' aria-label="Tout cocher"></th><th>N° bon</th><th>Date</th><th>Chauffeur</th><th>Lieu / parcelle</th><th>Prestations</th><th class="nb">Heures</th><th>Remarques</th><th></th></tr></thead><tbody>'
       + bons.map(function (b) {
-          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : ''].filter(Boolean).join(', ');
+          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : '', Precisions.resume(b.plages, b.preneurs)].filter(Boolean).join(', ');
           var intr = b.intrants.length ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
           return '<tr' + (decoches[b.numero] ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (decoches[b.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
             + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + trombone(b) + '</td>'
@@ -577,7 +588,7 @@ table.histo-detail .parc{white-space:nowrap}
     div._opt.remplir(l.options, l.variante);
     function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
     s.onchange = u; u();
-    div.querySelector('.retirer').onclick = function () { div.remove(); };
+    div.querySelector('.retirer').onclick = function () { div.remove(); majPhyto(); };
     $('b-lignes').appendChild(div);
   }
   function intrantEd(x) {
@@ -603,6 +614,7 @@ table.histo-detail .parc{white-space:nowrap}
     return Array.prototype.some.call($('b-lignes').children, function (d) { return !!(d._opt && d._opt.phyto()); });
   }
   function majPhyto() {
+    majPrec();
     var ph = estPhyto(), sarl = $('b-client').value === D.codeClientSarl;
     $('b-phyto-groupe').hidden = !ph;
     $('b-intrants').hidden = $('b-ajout-intrant').hidden = ph && sarl;
@@ -610,6 +622,19 @@ table.histo-detail .parc{white-space:nowrap}
     parcellesSarl.afficherPositions(ph); // SARL : une parcelle par bon (feuille d'échange)
   }
   $('b-lignes').addEventListener('change', majPhyto);
+  // Plages, preneurs et remorques (precisions.js)
+  var blocPrec = Precisions.monter($('b-prec'), { cadre: $('b-prec-groupe'), bouton: 'lien-btn',
+    clients: function () { return D ? D.clients : []; }, prestations: function () { return D ? D.prestations : []; },
+    preneurs: function () { return D ? D.preneurs || [] : []; } });
+  function majPrec() {
+    var codes = [];
+    Array.prototype.forEach.call($('b-lignes').children, function (d) {
+      if (!d._opt) return;
+      codes.push(d.querySelector('.e-code').value, d._opt.code());
+      d._opt.lire().forEach(function (x) { codes.push(x.code); });
+    });
+    blocPrec.maj($('b-client').value, codes);
+  }
 
   function ouvrirBon(numero) {
     var b = bonParNumero(numero); if (!b) return;
@@ -621,6 +646,7 @@ table.histo-detail .parc{white-space:nowrap}
     $('b-client').value = b.client;
     $('b-lieu').value = b.lieu;
     parcellesSarl.remplir(b.parcelles);
+    blocPrec.remplir({ plages: b.plages, preneurs: b.preneurs });
     $('b-lignes').innerHTML = ''; LignesOptions.grouper(b.lignes, D.prestations).forEach(function (l) { ligneEd(l); }); if (!b.lignes.length) ligneEd({});
     $('b-intrants').innerHTML = ''; b.intrants.forEach(intrantEd);
     blocPhyto.remplir(b.phyto ? Object.assign({}, b.phyto, { parcelles: b.parcelles }) : null);
@@ -637,7 +663,7 @@ table.histo-detail .parc{white-space:nowrap}
     $('dlg-bon').showModal();
   }
   $('b-client').onchange = majSarl;
-  $('b-ajout-ligne').onclick = function () { ligneEd({}); };
+  $('b-ajout-ligne').onclick = function () { ligneEd({}); majPhyto(); };
   $('b-ajout-intrant').onclick = function () { intrantEd({}); };
   $('b-fermer').onclick = function () { $('dlg-bon').close(); };
   $('form-bon').addEventListener('input', function () { $('b-erreur').hidden = true; });
@@ -654,7 +680,8 @@ table.histo-detail .parc{white-space:nowrap}
       phyto: estPhyto() ? blocPhyto.lire() : null,
       intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
-      })
+      }),
+      plages: blocPrec.lire().plages, preneurs: blocPrec.lire().preneurs
     };
     if (!donnees.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
     var ls = $('b-lignes').children;
@@ -664,6 +691,7 @@ table.histo-detail .parc{white-space:nowrap}
       if (!(nombre(ls[i].querySelector('.e-qte').value) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez une quantité supérieure à zéro.');
       var eo = ls[i]._opt.verifier(i + 1); if (eo) return erreurBon(eo);
     }
+    var epr = blocPrec.verifier(); if (epr) return erreurBon(epr);
     if (sarl) { var epa = parcellesSarl.verifier(!!donnees.phyto); if (epa) return erreurBon(epa); }
     if (donnees.phyto) {
       var ep = blocPhyto.verifier(); if (ep) return erreurBon(ep);
@@ -953,6 +981,7 @@ table.histo-detail .parc{white-space:nowrap}
       (b.parcelles || []).map(function (x) { return x.code + ' ' + x.nom; }).join(' '),
       b.lignes.map(function (x) { return x.code + ' ' + x.libelle; }).join(' '),
       b.intrants.map(function (x) { return x.produit; }).join(' '),
+      (b.plages || []).join(' '), (b.preneurs || []).map(function (x) { return x.nom; }).join(' '),
       b.phyto ? b.phyto.culture + ' ' + b.phyto.produits.map(function (x) { return x.nom + ' ' + x.amm; }).join(' ') : ''].join(' ').toLowerCase();
   }
   function dessinerHistorique() {
@@ -975,7 +1004,7 @@ table.histo-detail .parc{white-space:nowrap}
       + (nbF !== l.length ? ' (' + nbF + ' facturé' + (nbF > 1 ? 's' : '') + ', ' + (l.length - nbF) + ' annulé' + (l.length - nbF > 1 ? 's' : '') + ')' : '');
     $('histo').innerHTML = l.length ? l.map(function (b) {
       var intr = b.intrants.length && !b.phyto ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
-      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b)].filter(Boolean).join('<br>');
+      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b), esc(Precisions.resume(b.plages, b.preneurs))].filter(Boolean).join('<br>');
       var annule = b.statut === 'Annulé', motif = annule ? motifAnnulation(b) : '';
       return '<tr><td class="num">' + esc(b.numero)
         + (b.corrections.filter(function (x) { return x.element !== 'Statut'; }).length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '')
@@ -1085,6 +1114,10 @@ table.histo-detail .parc{white-space:nowrap}
       var i = document.querySelector('#f-champs [data-cle="' + c.cle + '"]');
       fiche[c.cle] = c.caseACocher ? i.checked : i.value.trim();
     });
+    if (ficheOuverte.type === 'prestation') {
+      fiche.precisions = ['plage', 'remorques', 'preneur'].filter(function (k) { return fiche['prec_' + k]; }).join(', ');
+      if (fiche.prec_remorques && fiche.prec_preneur) { $('f-erreur').textContent = 'Précisions : cochez « preneurs et remorques » ou « preneur sans nombre », pas les deux.'; $('f-erreur').hidden = false; return; }
+    }
     for (var k = 0; k < conf.champs.length; k++) {
       var c = conf.champs[k];
       if ((c.requis || c.code) && !fiche[c.cle]) { $('f-erreur').textContent = c.nom + ' : obligatoire.'; $('f-erreur').hidden = false; return; }

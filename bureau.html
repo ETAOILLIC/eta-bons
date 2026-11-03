@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- ETA Oillic – bureau.html – Version 0.18 – 2026-11-03 (plages, preneurs et remorques : precisions.js) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -256,7 +257,11 @@ textarea{min-height:64px;resize:vertical}
         <div id="f-equipe-existante"></div>
         <div id="f-equipe"></div>
         <button type="button" class="lien-btn" id="f-ajout-equipier">+ Ajouter un chauffeur au chantier</button>
-        <p class="aide" style="margin:6px 0 0">Chaque chauffeur reçoit sa propre mission (mêmes client, lieu, dates et consignes), avec sa prestation, et fait son propre bon. Le jour, le client, le lieu, les consignes et les dates changés ici le sont pour toute l'équipe ; le chauffeur et la prestation restent propres à chacun.</p>
+        <p class="aide" style="margin:6px 0 0">Chaque chauffeur reçoit sa propre mission (mêmes client, lieu, dates et consignes), avec sa prestation, et fait son propre bon. Le jour, le client, le lieu, les consignes, les dates, les plages et les preneurs changés ici le sont pour toute l'équipe ; le chauffeur et la prestation restent propres à chacun.</p>
+      </div>
+      <div class="groupe" id="f-prec-groupe" hidden>
+        <h4>Plages et preneurs</h4>
+        <div id="f-prec"></div>
       </div>
       <div class="groupe" id="f-phyto-groupe" hidden>
         <h4>Prescription phyto (avant application)</h4>
@@ -295,6 +300,10 @@ textarea{min-height:64px;resize:vertical}
         <h4>Travaux réalisés</h4>
         <div id="b-lignes"></div>
         <button type="button" class="lien-btn" id="b-ajout-ligne">+ Ajouter une prestation</button>
+      </div>
+      <div class="groupe" id="b-prec-groupe" hidden>
+        <h4>Plages et preneurs</h4>
+        <div id="b-prec"></div>
       </div>
       <div class="groupe" id="b-phyto-groupe" hidden>
         <h4>Traitement phytosanitaire</h4>
@@ -339,6 +348,7 @@ textarea{min-height:64px;resize:vertical}
 
 <script src="phyto.js"></script>
 <script src="lignes.js"></script>
+<script src="precisions.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (même déploiement que la page chauffeur)
@@ -454,6 +464,7 @@ textarea{min-height:64px;resize:vertical}
       + '<b>' + esc(m.clientNom) + '</b>'
       + '<span class="presta">' + esc(m.prestationLibelle) + '</span>'
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
+      + ((m.plages || []).length || (m.preneurs || []).length ? '<span class="lieu">' + esc(Precisions.resume(m.plages, m.preneurs)) + '</span>' : '')
       + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
       + (m.equipe && m.equipe.length ? '<span class="dates">équipe de ' + (m.equipe.length + 1) + ' chauffeurs</span>' : '')
@@ -672,6 +683,8 @@ textarea{min-height:64px;resize:vertical}
     $('f-apartir').value = v.aPartirDu; $('f-auplustard').value = v.auPlusTard; $('f-jour').value = v.datePrevue;
     remplirPresc(m);
     remplirEquipe(m);
+    blocPrecM.remplir({ plages: v.plages, preneurs: v.preneurs });
+    majPrecMission();
     Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
     $('f-enregistrer').hidden = fige;
     $('f-annuler-mission').hidden = !m || fige;
@@ -712,6 +725,18 @@ textarea{min-height:64px;resize:vertical}
       : 'Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.';
     majPresc();
   }
+  // Plages et preneurs prévus (precisions.js) : facultatifs, montrés au chauffeur et repris sur son bon
+  var blocPrecM = Precisions.monter($('f-prec'), { mode: 'mission', cadre: $('f-prec-groupe'), bouton: 'lien-btn',
+    clients: function () { return D ? D.clients : []; }, prestations: function () { return D ? D.prestations : []; },
+    preneurs: function () { return D ? D.preneurs || [] : []; } });
+  function majPrecMission() {
+    var codes = [$('f-prestation').value].concat(((enCours && enCours.equipe) || []).map(function (x) { return x.prestation; }),
+      Array.prototype.map.call($('f-equipe').querySelectorAll('.eq-prestation'), function (s) { return s.value; }));
+    blocPrecM.maj($('f-client').value, codes);
+  }
+  $('f-prestation').addEventListener('change', majPrecMission);
+  $('f-client').addEventListener('change', majPrecMission);
+  $('f-equipe').addEventListener('change', majPrecMission);
   // Mission d'équipe : autres chauffeurs du chantier (existants) et chauffeurs à ajouter
   function remplirEquipe(m) {
     $('f-equipe').innerHTML = '';
@@ -728,8 +753,9 @@ textarea{min-height:64px;resize:vertical}
       + '<select class="eq-prestation" aria-label="Prestation">' + options(LignesOptions.principales(D.prestations, ''), $('f-prestation').value, 'Prestation', function (p) { return p.libelle; }) + '</select>'
       + '<button type="button" class="retirer">Retirer</button>';
     d.querySelector('.eq-prestation').value = $('f-prestation').value; // même prestation par défaut
-    d.querySelector('.retirer').onclick = function () { d.remove(); };
+    d.querySelector('.retirer').onclick = function () { d.remove(); majPrecMission(); };
     $('f-equipe').appendChild(d);
+    majPrecMission();
   }
   $('f-ajout-equipier').onclick = ajouterEquipier;
   $('f-equipe-existante').addEventListener('click', function (e) {
@@ -777,7 +803,8 @@ textarea{min-height:64px;resize:vertical}
       client: $('f-client').value, prestation: $('f-prestation').value,
       lieu: $('f-lieu').value.trim(), consignes: $('f-consignes').value.trim(),
       aPartirDu: $('f-apartir').value, auPlusTard: $('f-auplustard').value,
-      datePrevue: $('f-jour').value, chauffeur: $('f-chauffeur').value
+      datePrevue: $('f-jour').value, chauffeur: $('f-chauffeur').value,
+      plages: blocPrecM.lire().plages, preneurs: blocPrecM.lire().preneurs
     };
     if (!m.client) return erreurFiche('Choisissez le client.');
     if (!m.prestation) return erreurFiche('Choisissez la prestation.');
@@ -846,8 +873,9 @@ textarea{min-height:64px;resize:vertical}
       qte: div.querySelector('.e-qte'), conteneur: div.querySelector('.lo-options') });
     function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
     s.onchange = u; u();
-    div.querySelector('.retirer').onclick = function () { div.remove(); };
+    div.querySelector('.retirer').onclick = function () { div.remove(); majPhytoBon(); };
     $('b-lignes').appendChild(div);
+    if (D) majPhytoBon();
   }
   function intrantBon() {
     var div = document.createElement('div'); div.className = 'ligne-ed intr';
@@ -871,7 +899,21 @@ textarea{min-height:64px;resize:vertical}
       return !!ph;
     });
   }
+  // Plages, preneurs et remorques (precisions.js), comme sur le téléphone
+  var blocPrecB = Precisions.monter($('b-prec'), { cadre: $('b-prec-groupe'), bouton: 'lien-btn',
+    clients: function () { return D ? D.clients : []; }, prestations: function () { return D ? D.prestations : []; },
+    preneurs: function () { return D ? D.preneurs || [] : []; } });
+  function majPrecBon() {
+    var codes = [];
+    Array.prototype.forEach.call($('b-lignes').children, function (d) {
+      if (!d._opt) return;
+      codes.push(d.querySelector('.e-code').value, d._opt.code());
+      d._opt.lire().forEach(function (x) { codes.push(x.code); });
+    });
+    blocPrecB.maj($('b-client').value, codes);
+  }
   function majPhytoBon() {
+    majPrecBon();
     var ph = estPhytoBon(), sarl = $('b-client').value === D.codeClientSarl;
     $('b-phyto-groupe').hidden = !ph;
     $('b-intrants').hidden = $('b-ajout-intrant').hidden = ph && sarl;
@@ -891,6 +933,7 @@ textarea{min-height:64px;resize:vertical}
     $('b-client').innerHTML = optionsActives(D.clients, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
     $('b-client').value = m ? m.client : '';
     $('b-lieu').value = m ? m.lieu : '';
+    blocPrecB.remplir(m ? { plages: m.plages, preneurs: m.preneurs } : null);
     $('b-lignes').innerHTML = ''; ligneBon(m ? m.prestation : '');
     $('b-intrants').innerHTML = '';
     var pr = m && m.prescription ? Object.assign({}, m.prescription, { conforme: m.conforme, demarches: m.demarches, valideAvantLe: m.valideAvantLe }) : null;
@@ -921,7 +964,8 @@ textarea{min-height:64px;resize:vertical}
       phyto: estPhytoBon() ? blocPhyto.lire() : null,
       intrants: !sarl || estPhytoBon() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
-      }).filter(function (x) { return x.produit || x.dose || x.unite; })
+      }).filter(function (x) { return x.produit || x.dose || x.unite; }),
+      plages: blocPrecB.lire().plages, preneurs: blocPrecB.lire().preneurs
     };
     if (!bon.chauffeur) return erreurBon('Choisissez le chauffeur qui a fait le travail.');
     if (!bon.date) return erreurBon("Indiquez la date de l'intervention.");
@@ -935,6 +979,7 @@ textarea{min-height:64px;resize:vertical}
       if (!(nombre(ls[i].querySelector('.e-qte').value) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
       var eo = ls[i]._opt.verifier(i + 1); if (eo) return erreurBon(eo);
     }
+    var epr = blocPrecB.verifier(); if (epr) return erreurBon(epr);
     if (bon.phyto) {
       var ep = blocPhyto.verifier(); if (ep) return erreurBon(ep);
       var mq = blocPhyto.manques();

@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- ETA Oillic – index.html – Version 0.18 – 2026-11-03 (plages, preneurs et remorques : precisions.js) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -186,6 +187,11 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
         <button type="button" class="secondaire" id="btn-ligne">Ajouter une prestation</button>
       </fieldset>
 
+      <fieldset id="bloc-prec" hidden>
+        <legend>Plages et preneurs</legend>
+        <div id="precisions"></div>
+      </fieldset>
+
       <fieldset id="bloc-phyto" hidden>
         <legend>Traitement phytosanitaire</legend>
         <p class="pj-aide">Obligatoire pour le registre. Une culture par bon, une ou plusieurs parcelles. Relevez la position depuis chaque parcelle ; sinon le bureau la placera sur la carte.</p>
@@ -230,6 +236,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
 
 <script src="phyto.js"></script>
 <script src="lignes.js"></script>
+<script src="precisions.js"></script>
 <script>
 (function () {
   // Adresse du moteur Apps Script (déploiement « Application Web », se termine par /exec)
@@ -337,6 +344,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
           + '<span class="quand"><b>' + esc(etiquette) + '</b>' + (precision ? '<small>' + esc(precision) + '</small>' : '') + '</span>'
           + '<span class="quoi"><b>' + esc(m.clientNom) + '</b>'
           + '<span class="detail">' + esc(m.prestationLibelle) + (m.lieu ? ', ' + esc(m.lieu) : '') + '</span>'
+          + ((m.plages || []).length || (m.preneurs || []).length ? '<span class="detail">' + esc(Precisions.resume(m.plages, m.preneurs)) + '</span>' : '')
           + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
           + (m.equipe && m.equipe.length ? '<span class="consigne">Équipe : ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + '</span>' : '')
           + (m.prescription ? '<span class="consigne">' + (m.valideAvantLe ? '✓ Prescription phyto validée : chantier en cours' : 'Prescription phyto à vérifier et valider avant de démarrer') + '</span>' : '')
@@ -365,7 +373,8 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     $('rappel').hidden = !m;
     if (m) {
       $('rappel').innerHTML = '<b>' + esc(m.clientNom) + '</b><br>' + esc(m.prestationLibelle)
-        + (m.lieu ? ', ' + esc(m.lieu) : '') + (m.consignes ? '<br>' + esc(m.consignes) : '')
+        + (m.lieu ? ', ' + esc(m.lieu) : '') + ((m.plages || []).length || (m.preneurs || []).length ? '<br>' + esc(Precisions.resume(m.plages, m.preneurs)) : '')
+        + (m.consignes ? '<br>' + esc(m.consignes) : '')
         + (m.equipe && m.equipe.length ? '<br>Avec ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + ' : chacun fait son bon.' : '')
         + (m.prescription && !m.valideAvantLe ? '<br><b>Traitement : vérifiez la prescription du bureau, puis validez-la avant de démarrer.</b>' : '');
     }
@@ -384,6 +393,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (pr && pr.valideAvantLe) $('f-client').disabled = true;
     $('parcelles-erreur').textContent = D.parcelles.erreur || '';
     $('parcelles-erreur').hidden = !D.parcelles.erreur;
+    blocPrec.remplir(m ? { plages: m.plages, preneurs: m.preneurs } : null); // plages et preneurs prévus par le bureau
     $('lignes').innerHTML = '';
     ajouterLigne(m ? m.prestation : '');
     if (pr) $('lignes').querySelector('.ligne')._opt.cocherPhyto(); // prescription : l'option phyto de la prestation est cochée
@@ -454,7 +464,20 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     })[0];
   }
   function estPhyto() { return !!lignePhyto(); }
+  // Plages, preneurs et remorques (precisions.js) : demandés par certaines prestations (collecte des algues)
+  var blocPrec = Precisions.monter($('precisions'), { cadre: $('bloc-prec'), bouton: 'secondaire',
+    clients: function () { return D ? D.clients : []; }, prestations: function () { return D ? D.prestations : []; },
+    preneurs: function () { return D ? D.preneurs || [] : []; } });
+  function majPrecisions() {
+    var codes = [];
+    Array.prototype.forEach.call($('lignes').querySelectorAll('.ligne'), function (l) {
+      codes.push(l.querySelector('.l-presta').value, l._opt.code());
+      l._opt.lire().forEach(function (x) { codes.push(x.code); });
+    });
+    blocPrec.maj($('f-client').value, codes);
+  }
   function majPhyto() {
+    majPrecisions();
     var l = lignePhyto(), sarl = estSarl();
     $('bloc-phyto').hidden = !l;
     $('intrants').hidden = $('btn-intrant').hidden = !!(l && sarl);
@@ -512,7 +535,9 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
         return { produit: x.querySelector('.i-produit').value.trim(), dose: x.querySelector('.i-dose').value.trim(), unite: x.querySelector('.i-unite').value };
       }).filter(function (x) { return x.produit || x.dose || x.unite; }),
       heures: $('f-heures').value.trim(),
-      remarques: $('f-remarques').value.trim()
+      remarques: $('f-remarques').value.trim(),
+      plages: blocPrec.lire().plages,
+      preneurs: blocPrec.lire().preneurs
     };
   }
 
@@ -528,6 +553,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       if (!(nombre(ls[i].querySelector('.l-qte').value) > 0)) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
       var eo = ls[i]._opt.verifier(i + 1); if (eo) return eo;
     }
+    var epr = blocPrec.verifier(); if (epr) return epr;
     for (var j = 0; j < b.intrants.length; j++) {
       var x = b.intrants[j];
       if (!x.produit) return 'Intrant ' + (j + 1) + ' : indiquez le produit.';
