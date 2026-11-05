@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – index.html – Version 0.19 – 2026-11-05 (heures saisies en heures et minutes) -->
+<!-- ETA Oillic – index.html – Version 0.20 – 2026-11-05 (chronomètre des bons) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -99,6 +99,20 @@ fieldset .secondaire{margin-top:12px}
 .erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;font-weight:700;margin:0 0 12px}
 .note{font-weight:400;color:var(--rouge);font-size:16px}
 label > .lo-duree{margin-top:6px}
+/* Chronomètre */
+#bloc-chrono{text-align:center}
+#bloc-chrono.marche{border:3px solid var(--vert)}
+#bloc-chrono.pause{border:3px solid var(--ambre)}
+.chrono-temps{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;margin:4px 0}
+.chrono-etat{margin:0 0 12px;color:var(--doux);font-size:16px}
+.chrono-boutons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chrono-boutons button{min-height:58px;font-size:19px}
+.chrono-boutons .seul{grid-column:1/-1}
+.quoi .chrono{font-size:15px;font-weight:700;padding:3px 8px;border-radius:6px;margin-top:6px;width:max-content;max-width:100%}
+.quoi .chrono.marche{background:var(--vert);color:var(--sur-vert)}
+.quoi .chrono.pause{background:var(--ambre);color:#2A1E05}
+.quoi .chrono.fini{background:var(--trait);color:var(--encre)}
+.info{background:var(--vert-pale);border-radius:8px;padding:10px 12px;font-weight:700;margin:0 0 12px}
 .lo-duree input{min-height:52px}
 /* Pièces jointes */
 .pj-aide{margin:2px 0 6px;color:var(--doux);font-size:15px}
@@ -163,6 +177,19 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     <h1 id="titre-bon">Nouveau bon</h1>
     <div class="rappel" id="rappel" hidden></div>
     <form id="form-bon" novalidate>
+      <fieldset id="bloc-chrono">
+        <legend>Chronomètre</legend>
+        <div class="chrono-temps" id="chrono-temps">0 h 00</div>
+        <p class="chrono-etat" id="chrono-etat"></p>
+        <p class="info" id="chrono-info" hidden></p>
+        <div class="chrono-boutons">
+          <button type="button" class="principal seul" id="chrono-demarrer">▶ Démarrer</button>
+          <button type="button" class="secondaire" id="chrono-pause">⏸ Pause</button>
+          <button type="button" class="principal" id="chrono-reprendre">▶ Reprendre</button>
+          <button type="button" class="principal" id="chrono-fini">■ Fini</button>
+        </div>
+      </fieldset>
+
       <label>Date de l'intervention
         <input type="date" id="f-date">
       </label>
@@ -306,6 +333,11 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     appel('charger', {})
       .then(function (d) {
         D = d;
+        D.missions.forEach(function (m) { preparerChrono(m.chrono, d.maintenant); });
+        if (mission && !$('vue-bon').hidden) { // bon ouvert : chronomètre à jour
+          var mm = D.missions.filter(function (x) { return x.id === mission.id; })[0];
+          if (mm && mm.chrono) { mission.chrono = mm.chrono; dessinerChrono(); }
+        }
         $('chargement').hidden = true;
         $('alerte').hidden = true;
         afficherAccueil();
@@ -335,6 +367,9 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (!D.missions.length) {
       ul.innerHTML = '<li class="vide">Aucune mission planifiée. Pour un travail non prévu, utilisez « Nouveau bon sans mission ».</li>';
     } else {
+      // Chronomètres en marche d'abord, puis en pause ou arrêtés, puis les autres missions par date
+      var rang = function (m) { return !m.chrono ? 3 : m.chrono.etat === 'En cours' ? 0 : 1; };
+      D.missions.sort(function (a, b) { return rang(a) - rang(b) || (a.date || '9999').localeCompare(b.date || '9999'); });
       ul.innerHTML = D.missions.map(function (m, i) {
         var etiquette, classe = '', precision = '';
         if (!m.date) etiquette = 'Sans date';
@@ -349,6 +384,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
           + ((m.plages || []).length || (m.preneurs || []).length ? '<span class="detail">' + esc(Precisions.resume(m.plages, m.preneurs)) + '</span>' : '')
           + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
           + (m.equipe && m.equipe.length ? '<span class="consigne">Équipe : ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + '</span>' : '')
+          + (m.chrono ? '<span class="chrono ' + classeChrono(m.chrono) + '">' + esc(texteChrono(m.chrono)) + '</span>' : '')
           + (m.prescription ? '<span class="consigne">' + (m.valideAvantLe ? '✓ Prescription phyto validée : chantier en cours' : 'Prescription phyto à vérifier et valider avant de démarrer') + '</span>' : '')
           + '</span></button></li>';
       }).join('');
@@ -403,8 +439,102 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     majSarl();
     $('erreur').hidden = true;
     etatEnvoi(false);
+    $('chrono-info').hidden = true;
+    dessinerChrono();
+    if (m && m.chrono && m.chrono.etat === 'Fini') remplirTemps(minutesChrono(m.chrono)); // chronomètre déjà arrêté
     vue('bon');
   }
+
+  // ------------------------------------------------------------ Chronomètre (Chrono.gs)
+  /** Minutes écoulées (segment en marche compté jusqu'à maintenant, à l'heure du serveur). */
+  function minutesChrono(c) {
+    var maintenant = Date.now() + (c.decalage || 0), ms = 0;
+    (c.segments || []).forEach(function (s) { ms += Math.max(0, (s[1] || maintenant) - s[0]); });
+    return Math.round(ms / 60000);
+  }
+  function hm(min) { return Math.floor(min / 60) + '\u00a0h\u00a0' + String(min % 60).padStart(2, '0'); }
+  function classeChrono(c) { return c.etat === 'En cours' ? 'marche' : c.etat === 'En pause' ? 'pause' : 'fini'; }
+  function texteChrono(c) {
+    var t = hm(minutesChrono(c));
+    return c.etat === 'En cours' ? '▶ En cours · ' + t : c.etat === 'En pause' ? '⏸ En pause · ' + t : '■ Arrêté · ' + t + ' : bon à envoyer';
+  }
+  /** Chronomètre reçu du serveur : décalage entre l'horloge du serveur et celle du téléphone. */
+  function preparerChrono(c, maintenantServeur) { if (c) c.decalage = (maintenantServeur || c.maintenant || Date.now()) - Date.now(); return c; }
+  function dessinerChrono() {
+    var c = mission && mission.chrono, etat = c ? c.etat : '';
+    $('bloc-chrono').className = c ? classeChrono(c) : '';
+    $('chrono-temps').textContent = hm(c ? minutesChrono(c) : 0);
+    $('chrono-etat').textContent = !c ? 'Appuyez sur « Démarrer » en commençant le travail. Le temps est conservé même si vous quittez la page.'
+      : etat === 'En cours' ? 'En cours. Pause pour le déjeuner, une panne ou la fin de journée ; Fini quand le travail est terminé.'
+      : etat === 'En pause' ? 'En pause. Reprendre pour continuer (même un autre jour) ; Fini quand le travail est terminé.'
+      : 'Arrêté : le temps est inscrit dans le bon, vérifiez-le puis envoyez le bon.';
+    $('chrono-demarrer').hidden = !!c;
+    $('chrono-pause').hidden = etat !== 'En cours';
+    $('chrono-reprendre').hidden = !(etat === 'En pause' || etat === 'Fini');
+    $('chrono-fini').hidden = !(etat === 'En cours' || etat === 'En pause');
+    $('chrono-reprendre').className = etat === 'Fini' ? 'secondaire seul' : 'principal';
+  }
+  function boutonsChrono(actif) { ['demarrer', 'pause', 'reprendre', 'fini'].forEach(function (a) { $('chrono-' + a).disabled = !actif; }); }
+  function actionChrono(action) {
+    if (action === 'fini' && !confirm('Arrêter le chronomètre ? Le temps sera inscrit dans le bon ; vous pourrez le corriger avant de l\'envoyer.')) return;
+    var d = { idMission: mission ? mission.id : '', action: action };
+    if (!mission) {
+      var l = $('lignes').querySelector('.ligne');
+      d.client = $('f-client').value; d.lieu = $('f-lieu').value.trim();
+      d.prestation = l ? (l._opt.code() || l.querySelector('.l-presta').value) : '';
+      if (!d.client) { montrerErreur('Choisissez le client avant de démarrer le chronomètre.'); return; }
+      if (!d.prestation) { montrerErreur('Choisissez la prestation avant de démarrer le chronomètre.'); return; }
+    }
+    $('erreur').hidden = true;
+    boutonsChrono(false);
+    appel('chrono', { chrono: d })
+      .then(function (r) {
+        boutonsChrono(true);
+        if (!mission) {
+          mission = { id: r.idMission, client: d.client };
+          $('titre-bon').textContent = 'Bon du chantier en cours';
+        }
+        mission.chrono = preparerChrono(r.chrono);
+        dessinerChrono();
+        var info = r.misEnPause && r.misEnPause.length ? 'Mis en pause : ' + r.misEnPause.map(function (id) {
+          var x = (D.missions || []).filter(function (y) { return y.id === id; })[0];
+          return x ? x.clientNom + ' (' + x.prestationLibelle + ')' : id;
+        }).join(', ') + '.' : '';
+        $('chrono-info').textContent = info; $('chrono-info').hidden = !info;
+        if (action === 'fini') remplirTemps(minutesChrono(mission.chrono));
+        charger(true); // liste des missions à jour (chronomètres)
+      })
+      .catch(function (e) { boutonsChrono(true); montrerErreur(e.message); });
+  }
+  /** Temps mesuré → heures de travail et quantité de la prestation à l'heure (s'il n'y en a qu'une) ; date du jour de fin. */
+  function remplirTemps(min) {
+    var dec = String(Math.round(min / 60 * 100) / 100).replace('.', ',');
+    $('f-heures').value = dec; dureeHeures.maj();
+    var auj = new Date(); auj = auj.getFullYear() + '-' + String(auj.getMonth() + 1).padStart(2, '0') + '-' + String(auj.getDate()).padStart(2, '0');
+    if (auj > $('f-date').max) $('f-date').max = auj;
+    $('f-date').value = auj;
+    var lh = Array.prototype.filter.call($('lignes').querySelectorAll('.ligne'), function (l) {
+      var c = l._opt.code() || l.querySelector('.l-presta').value;
+      var p = D.prestations.filter(function (x) { return x.code === c; })[0];
+      return p && LignesOptions.enHeures(p.unite);
+    });
+    if (lh.length === 1) {
+      var q = lh[0].querySelector('.l-qte');
+      q.value = dec; lh[0]._duree.maj();
+      q.dispatchEvent(new Event('input', { bubbles: true })); // options cochées : même quantité
+    } else if (lh.length > 1) {
+      $('chrono-info').textContent = 'Temps mesuré : ' + hm(min) + '. Plusieurs prestations à l\'heure : répartissez-le.';
+      $('chrono-info').hidden = false;
+    }
+    modifie = true;
+  }
+  ['demarrer', 'pause', 'reprendre', 'fini'].forEach(function (a) { $('chrono-' + a).onclick = function () { actionChrono(a); }; });
+  // Affichage du temps qui tourne (planning du téléphone et bon ouvert)
+  setInterval(function () {
+    if (document.visibilityState !== 'visible' || !D) return;
+    if (!$('vue-bon').hidden && mission && mission.chrono && mission.chrono.etat === 'En cours') $('chrono-temps').textContent = hm(minutesChrono(mission.chrono));
+    if (!$('vue-accueil').hidden && D.missions.some(function (m) { return m.chrono && m.chrono.etat === 'En cours'; })) afficherAccueil();
+  }, 20000);
 
   function ajouterLigne(code) {
     var div = document.createElement('div');
@@ -460,6 +590,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
         }
         $('f-client').disabled = true;
         $('erreur').hidden = true;
+        if (r.chrono) { mission.chrono = preparerChrono(r.chrono); dessinerChrono(); } // chronomètre démarré avec le chantier
         return r;
       });
   }

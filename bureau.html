@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.19 – 2026-11-05 (travaux faits bien distincts, prescription phyto partielle, heures en heures et minutes) -->
+<!-- ETA Oillic – bureau.html – Version 0.20 – 2026-11-05 (chronomètre des chauffeurs affiché sur les missions) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -113,6 +113,10 @@ main{padding:14px 16px 40px}
   background:var(--doux);color:var(--surface);font-size:11px;font-weight:700;letter-spacing:.06em}
 .carte.libre::before{content:'✓ FAIT · SANS MISSION'}
 .carte.faite .bon,.carte.libre .bon{display:block;font-weight:700;color:var(--encre)}
+.carte .chrono{display:block;width:max-content;max-width:100%;margin-top:3px;padding:0 6px;border-radius:4px;font-size:12px;font-weight:700}
+.carte .chrono.marche{background:var(--vert);color:var(--sur-vert)}
+.carte .chrono.pause{background:var(--ambre);color:#2A1E05}
+.carte .chrono.fini{background:var(--trait);color:var(--encre)}
 .carte.envoi{opacity:.55}
 .carte.glisse{opacity:.35}
 
@@ -212,6 +216,7 @@ textarea{min-height:64px;resize:vertical}
       <span><i style="background:var(--vert)"></i>Planifiée</span>
       <span><i style="background:repeating-linear-gradient(135deg,var(--surface-2) 0 3px,var(--fond) 3px 6px);border:1px dashed var(--doux)"></i>Fait : mission faite ou travail sans mission (bon reçu)</span>
       <span><i style="background:var(--rouge-pale);border:1px solid var(--rouge)"></i>Chauffeur absent</span>
+      <span><i style="background:var(--vert)"></i>▶ / ⏸ chronomètre du chauffeur en cours / en pause</span>
       <span>Glissez une mission vers un jour et un chauffeur. Double-cliquez dans une case pour y créer une mission. ✎ en haut d'une case : absence ou note du jour.</span>
     </div>
 
@@ -471,6 +476,8 @@ textarea{min-height:64px;resize:vertical}
       + (m.statut === 'Faite' ? '<span class="bon">' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
       + (m.equipe && m.equipe.length ? '<span class="dates">équipe de ' + (m.equipe.length + 1) + ' chauffeurs</span>' : '')
+      + (m.chrono && m.statut !== 'Faite' ? '<span class="chrono ' + (m.chrono.etat === 'En cours' ? 'marche' : m.chrono.etat === 'En pause' ? 'pause' : 'fini') + '" title="Chronomètre du chauffeur (temps à l\'heure du dernier chargement)">'
+        + (m.chrono.etat === 'En cours' ? '▶ en cours' : m.chrono.etat === 'En pause' ? '⏸ en pause' : '■ arrêté, bon à envoyer') + ' · ' + LignesOptions.hm(m.chrono.minutes / 60) + '</span>' : '')
       + (m.prescription && m.statut !== 'Faite' ? '<span class="dates">' + (m.valideAvantLe ? '✓ prescription validée' : 'prescription phyto') + '</span>' : '')
       + (absent && m.statut !== 'Faite' ? '<span class="conflit-txt">⚠ chauffeur absent : à replanifier</span>' : '')
       + '</button>';
@@ -948,6 +955,10 @@ textarea{min-height:64px;resize:vertical}
     parcellesSarl.remplir(pr && m.client === D.codeClientSarl ? pr.parcelles : null);
     blocPhyto.remplir(pr);
     if (pr) $('b-lignes').firstChild._opt.cocherPhyto(); // prescription : l'option phyto de la prestation est cochée
+    if (m && m.chrono && m.chrono.minutes) { // temps mesuré par le chronomètre du chauffeur : proposé dans les heures de travail
+      $('b-heures').value = String(Math.round(m.chrono.minutes / 60 * 100) / 100).replace('.', ',');
+      dureeHeuresBon.maj();
+    }
     majSarlBon();
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
     $('dlg-bon').showModal();
