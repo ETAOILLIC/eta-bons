@@ -1,6 +1,7 @@
 /**
  * ETA Oillic – options et variantes des prestations
- * Version 1.2 – 2026-11-05 : quantités en heures saisies en heures et minutes (duree)
+ * Version 1.3 – 2026-11-05 : largeur sur téléphone (cases heures/minutes et choix de variante ne débordent plus) ;
+ *   1.2 : quantités en heures saisies en heures et minutes (duree)
  *
  * Options (colonne « Options » de l'onglet Prestations) : suppléments facturés comme un article EBP à part
  *   (ex. broyage de la paille du big baller). Case à cocher sous la prestation ; cochée, elle ajoute une ligne
@@ -24,7 +25,7 @@
     var s = document.createElement('style');
     s.textContent = '.lo-options{grid-column:1/-1;display:grid;gap:6px;margin:2px 0 4px}'
       + '.lo-var{display:flex;align-items:center;gap:10px;font-weight:700}'
-      + '.lo-var select{flex:1;margin:0}'
+      + '.lo-var select{flex:1;min-width:0;width:0;margin:0}'
       + '.lo-opt{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;background:var(--vert-pale,#E4F1E4);border-radius:8px;padding:6px 10px}'
       + '.lo-opt>label{display:flex;align-items:center;gap:8px;font-weight:700;margin:0;grid-column:1/-1}'
       + '.lo-opt>label input{width:22px;height:22px;min-height:0;margin:0;flex:none}'
@@ -32,7 +33,7 @@
       + '.lo-qte input{max-width:130px;margin:0}'
       + '.lo-qte small{color:var(--doux,#53636F)}'
       + '.lo-duree{display:flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0}'
-      + '.lo-duree input{display:block;flex:1 1 0;min-width:2.6em;width:auto;margin:0;text-align:right}'
+      + '.lo-duree input{display:block;flex:1 1 0;min-width:2.6em;width:0;margin:0;text-align:right}'
       + '.lo-duree b{font-weight:700;flex:none}';
     document.head.appendChild(s);
   }
