@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – index.html – Version 0.18 – 2026-11-03 (plages, preneurs et remorques : precisions.js) -->
+<!-- ETA Oillic – index.html – Version 0.19 – 2026-11-05 (heures saisies en heures et minutes) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -98,6 +98,8 @@ fieldset .secondaire{margin-top:12px}
 .rappel{background:var(--vert-pale);border-radius:10px;padding:12px 14px;margin-bottom:18px}
 .erreur{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;font-weight:700;margin:0 0 12px}
 .note{font-weight:400;color:var(--rouge);font-size:16px}
+label > .lo-duree{margin-top:6px}
+.lo-duree input{min-height:52px}
 /* Pièces jointes */
 .pj-aide{margin:2px 0 6px;color:var(--doux);font-size:15px}
 .pj-liste{list-style:none;margin:0;padding:0}
@@ -198,7 +200,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
         <div id="phyto"></div>
       </fieldset>
 
-      <label>Heures de travail
+      <label>Heures de travail <span class="note" style="color:var(--doux)">(facultatif)</span>
         <input type="text" inputmode="decimal" id="f-heures" autocomplete="off" placeholder="Facultatif">
       </label>
       <label>Remarques
@@ -418,15 +420,23 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     // Options de la prestation (suppléments) : cases à cocher sous la ligne (lignes.js)
     div._opt = LignesOptions.attacher({ prestations: function () { return D.prestations; }, select: sel,
       qte: div.querySelector('.l-qte'), conteneur: div.querySelector('.lo-options') });
+    // Unité en heures : saisie en heures et minutes (lignes.js)
+    div._duree = LignesOptions.duree(div.querySelector('.l-qte'));
     function unite() {
       var p = D.prestations.filter(function (x) { return x.code === sel.value; })[0];
-      div.querySelector('.l-unite').textContent = p ? p.unite : '';
+      var h = !!p && LignesOptions.enHeures(p.unite);
+      div._duree.mode(h);
+      div.querySelector('.l-unite').textContent = p && !h ? p.unite : '';
     }
     sel.onchange = unite; unite();
     div.querySelector('.retirer').onclick = function () { div.remove(); majLignes(); };
     $('lignes').appendChild(div);
     majLignes();
   }
+  // Heures de travail : en heures et minutes
+  var dureeHeures = LignesOptions.duree($('f-heures'));
+  dureeHeures.mode(true);
+
   // ------------------------------------------------------------ Traitement phytosanitaire (phyto.js)
   var blocPhyto = Phyto.monter($('phyto'), { bouton: 'secondaire', gps: true, etapes: true,
     catalogue: function () { return D ? D.catalogue || [] : []; },

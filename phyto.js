@@ -1,6 +1,6 @@
 /**
  * ETA Oillic – bloc « Traitement phytosanitaire » des bons (page chauffeur, planning, gestion)
- * Version 1.4 – 2026-11-03 : matériel proposé (incorporation au semis) ; 1.3 : fiche chantier (avant application / validation / après application / informations client),
+ * Version 1.5 – 2026-11-05 : prescription partielle acceptée dans la mission (verifierPrescription(…, partielle)) ; 1.4 – 2026-11-03 : matériel proposé (incorporation au semis) ; 1.3 : fiche chantier (avant application / validation / après application / informations client),
  *   catalogue des produits, météo MET Norway
  *
  * Informations du registre (arrêté du 24 décembre 2025, annexes I et II) et du référentiel d'agrément :
@@ -764,13 +764,18 @@
           rentree: q('.ph-rentree').value.trim(), infosClient: q('.ph-infos-client').value.trim()
         });
       },
-      /** Contrôles de la prescription ; avecValidation : réponse « conforme » exigée (téléphone). */
-      verifierPrescription: function (avecValidation) {
+      /**
+       * Contrôles de la prescription ; avecValidation : réponse « conforme » exigée (téléphone) ;
+       * partielle : mission préparée au bureau, seules les valeurs saisies sont contrôlées (le chauffeur complète).
+       */
+      verifierPrescription: function (avecValidation, partielle) {
         var x = bloc.lirePrescription();
-        if (!q('.ph-culture-liste').value) return 'Prescription : choisissez la culture.';
-        if (!x.culture) return 'Prescription : indiquez le nom de la culture.';
-        if (!x.bio) return 'Prescription : production biologique, oui ou non ?';
-        if (!x.produits.length) return 'Prescription : indiquez au moins un produit à utiliser.';
+        if (!partielle) {
+          if (!q('.ph-culture-liste').value) return 'Prescription : choisissez la culture.';
+          if (!x.culture) return 'Prescription : indiquez le nom de la culture.';
+          if (!x.bio) return 'Prescription : production biologique, oui ou non ?';
+          if (!x.produits.length) return 'Prescription : indiquez au moins un produit à utiliser.';
+        }
         for (var j = 0; j < x.produits.length; j++) {
           var p = x.produits[j], t = 'Produit ' + (j + 1) + ' : ';
           if (!p.nom) return t + 'indiquez le nom commercial complet.';

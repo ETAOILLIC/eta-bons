@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – gestion.html – Version 0.18 – 2026-11-03 (plages, preneurs et remorques : precisions.js) -->
+<!-- ETA Oillic – gestion.html – Version 0.19 – 2026-11-05 (fiche « Voir » d'un bon, heures en heures et minutes) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -142,7 +142,7 @@ label.lien-btn{display:inline-block;cursor:pointer;font-size:14px}
 .pj-badge.manque{background:var(--rouge);color:#fff;border-color:var(--rouge)}
 #alerte-phyto ul{margin:6px 0 0;padding-left:18px;font-weight:400}
 #alerte-phyto li{margin:3px 0}
-.ligne-ed{display:grid;grid-template-columns:1fr 130px 50px 70px;gap:8px;align-items:center;margin-bottom:6px}
+.ligne-ed{display:grid;grid-template-columns:1fr 170px 34px 70px;gap:8px;align-items:center;margin-bottom:6px}
 .ligne-ed.intr{grid-template-columns:1fr 110px 120px 70px}
 .ligne-ed input,.ligne-ed select{margin-top:0}
 .ligne-ed .u{font-weight:700}
@@ -161,6 +161,14 @@ table.histo-detail .rem{min-width:160px;max-width:280px;white-space:pre-line}
 table.histo-detail small{color:var(--doux)}
 table.histo-detail .parc{white-space:nowrap}
 .chargement{padding:60px 0;text-align:center;color:var(--doux);font-size:18px}
+/* Fiche « Voir » d'un bon (lecture seule) */
+#dlg-voir{width:min(820px,96vw)}
+table.voir{width:100%;border-collapse:collapse;font-size:14px}
+table.voir th,table.voir td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid var(--trait)}
+table.voir th{width:180px;color:var(--doux);font-size:13px;font-weight:700}
+table.voir td small{color:var(--doux)}
+table.voir ul{margin:0;padding-left:18px}
+.voir-detail{white-space:pre-line}
 .vide-lien{max-width:540px;margin:60px auto;background:var(--surface);border-radius:12px;padding:24px}
 </style>
 </head>
@@ -301,6 +309,21 @@ table.histo-detail .parc{white-space:nowrap}
   </form>
 </dialog>
 
+<!-- Fiche d'un bon en lecture seule -->
+<dialog id="dlg-voir">
+  <div class="fen">
+    <h3 id="v-titre">Bon</h3>
+    <p class="sous" id="v-sous"></p>
+    <div id="v-corps"></div>
+    <div class="boutons">
+      <span class="espace"></span>
+      <button type="button" class="secondaire" id="v-fiche" hidden>Fiche chantier phyto (PDF)</button>
+      <button type="button" class="secondaire" id="v-corriger" hidden>Corriger</button>
+      <button type="button" class="principal" id="v-fermer">Fermer</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- Fiche client / prestation / chauffeur -->
 <dialog id="dlg-pj">
   <div class="fen">
@@ -389,7 +412,10 @@ table.histo-detail .parc{white-space:nowrap}
   function horodate(s) { return s ? court(s.slice(0, 10)) + ' ' + s.slice(11, 16) : ''; }
   function nb(n) { return Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 }); }
   function nombre(s) { s = String(s).replace(/\s/g, '').replace(',', '.'); var v = Number(s); return s !== '' && isFinite(v) ? v : NaN; }
-  function resume(l) { return l.map(function (x) { return esc(x.libelle) + ' <b>' + nb(x.quantite) + '</b> ' + esc(x.unite); }).join('<br>'); }
+  /** Quantité : « 2 h 30 » pour une unité en heures, sinon « 12,5 ha ». */
+  function qte(q, unite) { return LignesOptions.enHeures(unite) ? '<b>' + esc(LignesOptions.hm(q)) + '</b>' : '<b>' + nb(q) + '</b> ' + esc(unite); }
+  function heures(h) { return h === '' || h == null ? '' : esc(LignesOptions.hm(h)); }
+  function resume(l) { return l.map(function (x) { return esc(x.libelle) + ' ' + qte(x.quantite, x.unite); }).join('<br>'); }
 
   function appel(action, donnees) {
     var corps = { action: action, jetonBureau: JETON };
@@ -504,7 +530,8 @@ table.histo-detail .parc{white-space:nowrap}
       + '<div class="corps"><div class="totaux"><h3>À saisir dans EBP' + (coches.length < bons.length ? ' (' + coches.length + ' bon' + (coches.length > 1 ? 's' : '') + ' cochés)' : '') + '</h3>'
       + (tot.length ? '<table>' + tot.map(function (x) {
           return '<tr><td><span class="art">' + esc(x.code) + '</span><br>' + esc(x.libelle) + '</td>'
-            + '<td class="qte"><button type="button" data-copier="' + esc(nb(x.quantite)) + '" title="Cliquer pour copier">' + esc(nb(x.quantite)) + '</button></td>'
+            + '<td class="qte"><button type="button" data-copier="' + esc(nb(x.quantite)) + '" title="Cliquer pour copier">' + esc(nb(x.quantite)) + '</button>'
+            + (LignesOptions.enHeures(x.unite) ? '<br><small style="font-size:13px;font-weight:400">' + esc(LignesOptions.hm(x.quantite)) + '</small>' : '') + '</td>'
             + '<td class="u">' + esc(x.unite) + '</td></tr>';
         }).join('') + '</table>' : '<p>Aucun bon coché.</p>')
       + '</div><div class="bons"><h3>Détail des bons</h3><table class="liste"><thead><tr><th><input type="checkbox" data-tout="' + esc(code) + '"'
@@ -515,8 +542,8 @@ table.histo-detail .parc{white-space:nowrap}
           return '<tr' + (decoches[b.numero] ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (decoches[b.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
             + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + trombone(b) + '</td>'
             + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td><td>' + esc(lieu) + '</td>'
-            + '<td>' + resume(b.lignes) + intr + '</td><td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td>'
-            + '<td>' + esc(b.remarques) + '</td><td><button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button></td></tr>';
+            + '<td>' + resume(b.lignes) + intr + '</td><td class="nb">' + heures(b.heures) + '</td>'
+            + '<td>' + esc(b.remarques) + '</td><td><button type="button" class="lien-btn" data-voir="' + esc(b.numero) + '">Voir</button><button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button></td></tr>';
         }).join('') + '</tbody></table></div></div>'
       + '<div class="pied-client"><label>N° de pièce EBP (BL ou facture) <input type="text" data-piece="' + esc(code) + '" maxlength="40" placeholder="facultatif"></label>'
       + '<button type="button" class="principal" data-facturer="' + esc(code) + '"' + (coches.length ? '' : ' disabled') + '>Marquer facturé' + (coches.length ? ' (' + coches.length + ' bon' + (coches.length > 1 ? 's' : '') + ')' : '') + '</button></div>'
@@ -586,7 +613,11 @@ table.histo-detail .parc{white-space:nowrap}
     div._opt = LignesOptions.attacher({ prestations: function () { return D.prestations; }, select: s,
       qte: div.querySelector('.e-qte'), conteneur: div.querySelector('.lo-options') });
     div._opt.remplir(l.options, l.variante);
-    function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
+    div._duree = LignesOptions.duree(div.querySelector('.e-qte')); // unité en heures : heures et minutes
+    function u() {
+      var p = D.prestations.filter(function (x) { return x.code === s.value; })[0], h = !!p && LignesOptions.enHeures(p.unite);
+      div._duree.mode(h); div.querySelector('.u').textContent = p && !h ? p.unite : '';
+    }
     s.onchange = u; u();
     div.querySelector('.retirer').onclick = function () { div.remove(); majPhyto(); };
     $('b-lignes').appendChild(div);
@@ -652,6 +683,7 @@ table.histo-detail .parc{white-space:nowrap}
     blocPhyto.remplir(b.phyto ? Object.assign({}, b.phyto, { parcelles: b.parcelles }) : null);
     $('b-fiche').hidden = !b.phyto;
     $('b-heures').value = b.heures === '' ? '' : String(b.heures).replace('.', ',');
+    dureeHeures.maj();
     $('b-remarques').value = b.remarques;
     majSarl();
     $('b-histo').hidden = !b.corrections.length;
@@ -662,6 +694,7 @@ table.histo-detail .parc{white-space:nowrap}
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
     $('dlg-bon').showModal();
   }
+  var dureeHeures = LignesOptions.duree($('b-heures')); dureeHeures.mode(true); // heures de travail en heures et minutes
   $('b-client').onchange = majSarl;
   $('b-ajout-ligne').onclick = function () { ligneEd({}); majPhyto(); };
   $('b-ajout-intrant').onclick = function () { intrantEd({}); };
@@ -724,6 +757,63 @@ table.histo-detail .parc{white-space:nowrap}
       })
       .catch(function (err) { occupe--; erreurBon(err.message); });
   };
+
+  // ------------------------------------------------------------ Voir un bon (lecture seule)
+  var bonVu = null;
+  function phytoDetail(p) {
+    if (!p) return '';
+    var v = function (x) { return x === '' || x == null ? '' : x; };
+    var l = [
+      ['Culture', [p.culture, p.bio === 'oui' ? 'production bio' : '', p.bbch ? 'BBCH ' + p.bbch : ''].filter(Boolean).join(', ')],
+      ['Cible', p.cible], ['Heures', p.debut || p.fin ? (p.debut || '?') + ' – ' + (p.fin || '?') : ''],
+      ['Bouillie', v(p.bouillie) !== '' ? nb(p.bouillie) + ' L' : ''], ['Surface', p.surface ? nb(p.surface) + ' ha' : ''],
+      ['Conditions', [v(p.vent) !== '' ? 'vent ' + nb(p.vent) + ' km/h' : '', p.ventDirection, v(p.temperature) !== '' ? nb(p.temperature) + ' °C' : '', v(p.hygro) !== '' ? 'hygrométrie ' + nb(p.hygro) + ' %' : ''].filter(Boolean).join(', ')],
+      ['Produits', p.produits.map(function (x) { return esc(x.nom) + ' ' + nb(x.quantite) + ' ' + esc(x.unite) + (x.amm ? ' (AMM ' + esc(x.amm) + ')' : ''); }).join('<br>')],
+      ['Validation', [p.valideAvantLe ? 'avant le ' + horodate(p.valideAvantLe) : '', p.valideApresLe ? 'après le ' + horodate(p.valideApresLe) : '', p.validation].filter(Boolean).join(', ')]
+    ].filter(function (x) { return x[1]; });
+    return l.map(function (x) { return '<small>' + esc(x[0]) + ' :</small> ' + (x[0] === 'Produits' ? x[1] : esc(x[1])); }).join('<br>')
+      + (p.manques.length ? '<br><b style="color:var(--rouge)">À compléter : ' + esc(p.manques.join(', ')) + '</b>' : '');
+  }
+  function voirBon(numero) {
+    var b = bonParNumero(numero); if (!b) return;
+    bonVu = b;
+    var motif = b.statut === 'Annulé' ? motifAnnulation(b) : '';
+    var lignes = [
+      ['Statut', '<span class="pastille' + (b.statut === 'Annulé' ? ' annule' : b.statut === 'À facturer' ? ' facturer' : '') + '">' + esc(b.statut) + '</span>'
+        + (b.piece ? ' pièce <b>' + esc(b.piece) + '</b>' : '') + (b.factureLe ? ' <small>le ' + horodate(b.factureLe) + '</small>' : '') + (motif ? '<br><small>' + esc(motif) + '</small>' : '')],
+      ['Date de l\'intervention', court(b.date)],
+      ['Client', esc(b.clientNom) + ' <small>' + esc(b.client) + '</small>'],
+      ['Chauffeur', esc(b.chauffeurNom) + (b.saisiParBureau ? ' <small>(saisi par le bureau)</small>' : '')],
+      ['Mission', b.idMission ? esc(b.idMission) : '<small>sans mission</small>'],
+      ['Parcelle ou lieu', esc(b.lieu)],
+      ['Parcelles', parcellesTexte(b)],
+      ['Plages et preneurs', esc(Precisions.resume(b.plages, b.preneurs))],
+      ['Prestations', resume(b.lignes)],
+      ['Intrants', b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join('<br>')],
+      ['Traitement phyto', phytoDetail(b.phyto)],
+      ['Heures de travail', heures(b.heures)],
+      ['Remarques', '<span class="voir-detail">' + esc(b.remarques) + '</span>'],
+      ['Pièces jointes', b.pieces.length ? '<ul class="pj-liste">' + b.pieces.map(function (p) { return lignePiece(p, false); }).join('') + '</ul>' : ''],
+      ['Feuille d\'échange SARL', b.envoyeSarl ? 'envoyé le ' + horodate(b.envoyeSarl) : ''],
+      ['Corrections', b.corrections.length ? '<ul>' + b.corrections.map(function (c) {
+        return '<li>' + horodate(c.date) + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
+      }).join('') + '</ul>' : '']
+    ].filter(function (x) { return x[1] && x[1] !== '<span class="voir-detail"></span>'; });
+    $('v-titre').textContent = 'Bon ' + b.numero;
+    $('v-sous').textContent = 'Saisi le ' + horodate(b.saisiLe) + ' — lecture seule';
+    $('v-corps').innerHTML = '<table class="voir">' + lignes.map(function (x) { return '<tr><th>' + x[0] + '</th><td>' + x[1] + '</td></tr>'; }).join('') + '</table>';
+    $('v-fiche').hidden = !b.phyto;
+    $('v-corriger').hidden = b.statut !== 'À facturer';
+    $('dlg-voir').showModal();
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-voir]') : null;
+    if (t) voirBon(t.getAttribute('data-voir'));
+  });
+  $('v-fermer').onclick = function () { $('dlg-voir').close(); };
+  $('v-corriger').onclick = function () { var n = bonVu.numero; $('dlg-voir').close(); ouvrirBon(n); };
+  $('v-fiche').onclick = function () { ouvrirFichePhyto(bonVu.numero); };
+  $('v-corps').addEventListener('click', function (e) { var id = e.target.getAttribute('data-pj-ouvrir'); if (id) ouvrirPiece(id); });
 
   // ------------------------------------------------------------ Pièces jointes
   var PJ_MAX = 5, PJ_COTE = 1600, PJ_PDF_MAX = 10 * 1024 * 1024;
@@ -908,8 +998,8 @@ table.histo-detail .parc{white-space:nowrap}
       var coche = e.action ? '<input type="checkbox" data-sarl="' + esc(e.numero) + '"' + (decochesSarl[e.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(e.numero) + '">' : '';
       var facture = b.statut === 'À facturer' ? '<span class="pastille facturer">À facturer</span>'
         : '<span class="pastille' + (b.statut === 'Annulé' ? ' annule' : '') + '">' + esc(b.statut) + '</span>';
-      var corriger = b.statut === 'À facturer' ? '<button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button>'
-        : b.statut === 'Facturé' ? '<span class="note-facture" title="Onglet Facturés : « Remettre à facturer » pour pouvoir le corriger">facturé</span>' : '';
+      var corriger = '<button type="button" class="lien-btn" data-voir="' + esc(b.numero) + '">Voir</button>' + (b.statut === 'À facturer' ? '<button type="button" class="lien-btn" data-corriger="' + esc(b.numero) + '">Corriger</button>'
+        : b.statut === 'Facturé' ? '<span class="note-facture" title="Onglet Facturés : « Remettre à facturer » pour pouvoir le corriger">facturé</span>' : '');
       var info = e.etat === 'Importé' && e.traiteLe ? 'Importé le ' + court(e.traiteLe) + (e.ref ? ' (' + e.ref + ')' : '') : e.message;
       return '<tr class="' + (e.alerte ? 'alerte-sarl' : '') + (e.action && decochesSarl[e.numero] ? ' decoche' : '') + '">'
         + '<td>' + coche + '</td>'
@@ -917,7 +1007,7 @@ table.histo-detail .parc{white-space:nowrap}
         + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td>'
         + '<td>' + esc(b.parcelle || '') + (b.lieu ? '<br><small>' + esc(b.lieu) + '</small>' : '') + '</td>'
         + '<td>' + resume(b.lignes) + intr + '</td>'
-        + '<td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td>'
+        + '<td class="nb">' + heures(b.heures) + '</td>'
         + '<td>' + facture + '</td>'
         + '<td><span class="etat-sarl ' + classeSarl(e) + '">' + esc(e.etat) + '</span>' + (info ? '<span class="msg-sarl">' + esc(info) + '</span>' : '') + '</td>'
         + '<td>' + corriger + '</td></tr>';
@@ -1011,11 +1101,11 @@ table.histo-detail .parc{white-space:nowrap}
         + trombone(b) + (b.idMission ? '<br><small>' + esc(b.idMission) + '</small>' : '') + '</td>'
         + '<td>' + court(b.date) + '</td><td>' + esc(b.clientNom) + '</td><td>' + esc(b.chauffeurNom) + (b.saisiParBureau ? '<br><small>saisi par le bureau</small>' : '') + '</td>'
         + '<td>' + lieu + '</td><td>' + resume(b.lignes) + intr + phytoTexte(b.phyto) + '</td>'
-        + '<td class="nb">' + (b.heures === '' ? '' : nb(b.heures)) + '</td><td class="rem">' + esc(b.remarques) + '</td>'
+        + '<td class="nb">' + heures(b.heures) + '</td><td class="rem">' + esc(b.remarques) + '</td>'
         + '<td><span class="pastille' + (annule ? ' annule' : '') + '">' + esc(b.statut) + '</span>'
         + (b.piece ? '<br>pièce <b>' + esc(b.piece) + '</b>' : '') + (b.factureLe ? '<br><small>le ' + horodate(b.factureLe) + '</small>' : '')
         + (motif ? '<br><small>' + esc(motif) + '</small>' : '') + '</td>'
-        + '<td>' + (b.statut === 'Facturé' ? '<button type="button" class="lien-btn" data-remettre="' + esc(b.numero) + '">Remettre à facturer</button>' : '') + '</td></tr>';
+        + '<td><button type="button" class="lien-btn" data-voir="' + esc(b.numero) + '">Voir</button>' + (b.statut === 'Facturé' ? '<br><button type="button" class="lien-btn" data-remettre="' + esc(b.numero) + '">Remettre à facturer</button>' : '') + '</td></tr>';
     }).join('') : '<tr><td colspan="10">Aucun bon.</td></tr>';
   }
   $('filtre-histo').oninput = dessinerHistorique;
@@ -1131,7 +1221,7 @@ table.histo-detail .parc{white-space:nowrap}
   $('actualiser').onclick = function () { charger(true); };
   // Mise à jour automatique toutes les 2 minutes (nouveaux bons), sauf pendant une saisie
   setInterval(function () {
-    if (D && !occupe && !$('dlg-bon').open && !$('dlg-fiche').open && !$('dlg-pj').open && document.visibilityState === 'visible') charger(true);
+    if (D && !occupe && !$('dlg-bon').open && !$('dlg-fiche').open && !$('dlg-pj').open && !$('dlg-voir').open && document.visibilityState === 'visible') charger(true);
   }, 120000);
 
   charger(false);

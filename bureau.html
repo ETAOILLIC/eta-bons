@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.18 – 2026-11-03 (plages, preneurs et remorques : precisions.js) -->
+<!-- ETA Oillic – bureau.html – Version 0.19 – 2026-11-05 (travaux faits bien distincts, prescription phyto partielle, heures en heures et minutes) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -94,7 +94,7 @@ main{padding:14px 16px 40px}
 
 /* Étiquettes de mission */
 .carte{background:var(--surface);border:1px solid var(--trait);border-left:6px solid var(--vert);border-radius:7px;
-  padding:6px 8px;font-size:13px;line-height:1.3;cursor:grab;user-select:none;text-align:left;width:100%}
+  padding:6px 8px;font-size:13px;line-height:1.3;cursor:grab;user-select:none;text-align:left;width:100%;box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .carte:active{cursor:grabbing}
 .carte b{display:block;font-size:14px}
 .carte .presta{display:block}
@@ -105,10 +105,14 @@ main{padding:14px 16px 40px}
 .carte.trop-tot b{color:var(--doux)}
 .carte.retard{border-left-color:var(--rouge)}
 .carte.retard .dates{color:var(--rouge);font-weight:700}
-.carte.faite{background:var(--vert-pale);border-color:var(--vert);border-left-color:var(--vert);cursor:pointer}
-.carte.faite .bon{display:block;font-weight:700;color:var(--vert)}
-.carte.libre{background:var(--bleu-pale);border:1px dashed var(--bleu);border-left:6px solid var(--bleu);cursor:pointer}
-.carte.libre .bon{display:block;font-weight:700;color:var(--bleu)}
+/* Travaux faits (mission faite, bon sans mission) : carte grisée et hachurée, bandeau « ✓ FAIT » — nettement à part */
+.carte.faite,.carte.libre{background:repeating-linear-gradient(135deg,var(--surface-2) 0 7px,var(--fond) 7px 14px);
+  border:1px dashed var(--trait);border-left:6px solid var(--doux);color:var(--doux);box-shadow:none;cursor:pointer}
+.carte.faite b,.carte.libre b{color:var(--doux)}
+.carte.faite::before,.carte.libre::before{content:'✓ FAIT';display:block;width:max-content;margin:0 0 4px;padding:0 7px;border-radius:4px;
+  background:var(--doux);color:var(--surface);font-size:11px;font-weight:700;letter-spacing:.06em}
+.carte.libre::before{content:'✓ FAIT · SANS MISSION'}
+.carte.faite .bon,.carte.libre .bon{display:block;font-weight:700;color:var(--encre)}
 .carte.envoi{opacity:.55}
 .carte.glisse{opacity:.35}
 
@@ -152,7 +156,7 @@ textarea{min-height:64px;resize:vertical}
 .groupe{grid-column:1/-1;border:1px solid var(--trait);border-radius:9px;padding:8px 12px 12px}
 .groupe.sarl{border:2px solid var(--ambre)}
 .groupe h4{margin:2px 0 6px;font-size:14px}
-.ligne-ed{display:grid;grid-template-columns:1fr 120px 44px 64px;gap:8px;align-items:center;margin-bottom:6px}
+.ligne-ed{display:grid;grid-template-columns:1fr 160px 34px 64px;gap:8px;align-items:center;margin-bottom:6px}
 .ligne-ed.intr{grid-template-columns:1fr 100px 110px 64px}
 .ligne-ed input,.ligne-ed select{display:block;width:100%;font-size:15px;background:var(--surface);border:1.5px solid var(--trait);border-radius:7px;min-height:38px;padding:6px 8px}
 .ligne-ed .u{font-weight:700}
@@ -206,8 +210,7 @@ textarea{min-height:64px;resize:vertical}
       <span><i style="background:var(--trait)"></i>Pas encore : date « à partir du » à venir</span>
       <span><i style="background:var(--rouge)"></i>En retard</span>
       <span><i style="background:var(--vert)"></i>Planifiée</span>
-      <span><i style="background:var(--vert-pale);border:1px solid var(--vert)"></i>Faite (bon reçu)</span>
-      <span><i style="background:var(--bleu-pale);border:1px dashed var(--bleu)"></i>Travail sans mission (bon reçu)</span>
+      <span><i style="background:repeating-linear-gradient(135deg,var(--surface-2) 0 3px,var(--fond) 3px 6px);border:1px dashed var(--doux)"></i>Fait : mission faite ou travail sans mission (bon reçu)</span>
       <span><i style="background:var(--rouge-pale);border:1px solid var(--rouge)"></i>Chauffeur absent</span>
       <span>Glissez une mission vers un jour et un chauffeur. Double-cliquez dans une case pour y créer une mission. ✎ en haut d'une case : absence ou note du jour.</span>
     </div>
@@ -265,7 +268,7 @@ textarea{min-height:64px;resize:vertical}
       </div>
       <div class="groupe" id="f-phyto-groupe" hidden>
         <h4>Prescription phyto (avant application)</h4>
-        <p class="aide" id="f-phyto-etat" style="margin:0 0 8px">Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.</p>
+        <p class="aide" id="f-phyto-etat" style="margin:0 0 8px">Préparée ici, elle est montrée au chauffeur, qui la complète si besoin, la vérifie et la valide avant de démarrer. Facultative et complétable : remplissez seulement ce que vous savez (la surface, par exemple).</p>
         <div id="f-parcelles-sarl"></div>
         <div id="f-phyto"></div>
       </div>
@@ -465,7 +468,7 @@ textarea{min-height:64px;resize:vertical}
       + '<span class="presta">' + esc(m.prestationLibelle) + '</span>'
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
       + ((m.plages || []).length || (m.preneurs || []).length ? '<span class="lieu">' + esc(Precisions.resume(m.plages, m.preneurs)) + '</span>' : '')
-      + (m.statut === 'Faite' ? '<span class="bon">✓ ' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
+      + (m.statut === 'Faite' ? '<span class="bon">' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
       + (m.equipe && m.equipe.length ? '<span class="dates">équipe de ' + (m.equipe.length + 1) + ' chauffeurs</span>' : '')
       + (m.prescription && m.statut !== 'Faite' ? '<span class="dates">' + (m.valideAvantLe ? '✓ prescription validée' : 'prescription phyto') + '</span>' : '')
@@ -488,7 +491,7 @@ textarea{min-height:64px;resize:vertical}
     return '<button type="button" class="carte libre" data-bon="' + esc(b.numero) + '" title="Travail sans mission">'
       + '<b>' + esc(b.clientNom) + '</b><span class="presta">' + esc(b.travaux) + '</span>'
       + (b.lieu ? '<span class="lieu">' + esc(b.lieu) + '</span>' : '')
-      + '<span class="bon">✓ ' + esc(b.numero) + ' (sans mission)' + trombone(b.numero) + '</span></button>';
+      + '<span class="bon">' + esc(b.numero) + trombone(b.numero) + '</span></button>';
   }
 
   // Trombone : nombre de pièces jointes du bon (consultables dans l'écran Gestion)
@@ -722,7 +725,7 @@ textarea{min-height:64px;resize:vertical}
     $('f-phyto-etat').textContent = m && m.valideAvantLe
       ? 'Validée par le chauffeur le ' + court(m.valideAvantLe.slice(0, 10)) + ' à ' + m.valideAvantLe.slice(11, 16)
         + (m.conforme === 'Non' ? ' (non conforme : ' + m.demarches + ')' : '') + '. Toute modification l\'oblige à la valider à nouveau.'
-      : 'Préparée ici, elle est montrée au chauffeur, qui la vérifie et la valide avant de démarrer. Facultative : le chauffeur peut aussi la remplir sur place.';
+      : 'Préparée ici, elle est montrée au chauffeur, qui la complète si besoin, la vérifie et la valide avant de démarrer. Facultative et complétable : remplissez seulement ce que vous savez (la surface, par exemple).';
     majPresc();
   }
   // Plages et preneurs prévus (precisions.js) : facultatifs, montrés au chauffeur et repris sur son bon
@@ -775,12 +778,13 @@ textarea{min-height:64px;resize:vertical}
     return { equipe: r, erreur: err };
   }
 
-  /** Prescription à enregistrer : null si rien n'est rempli ; message d'erreur sinon. */
+  /** Prescription à enregistrer : null si rien n'est rempli ; partielle possible ; message d'erreur si une valeur est invalide. */
   function lirePresc() {
     if (!prestationPhyto($('f-prestation').value)) return { prescription: null };
     var x = blocPresc.lirePrescription();
-    if (!x.culture && !x.produits.length && !x.cible && !x.parcelles.length) return { prescription: null };
-    var err = blocPresc.verifierPrescription(false);
+    if (!x.culture && !x.produits.length && !x.cible && !x.parcelles.length && x.surfaceATraiter === '' && !x.bbch && !x.specificites && !x.bio) return { prescription: null };
+    // Prescription partielle acceptée (ex. surface seule) : le chauffeur la complète avant de la valider
+    var err = blocPresc.verifierPrescription(false, true);
     return err ? { erreur: err } : { prescription: x };
   }
 
@@ -871,7 +875,11 @@ textarea{min-height:64px;resize:vertical}
     var s = div.querySelector('.e-code'); s.value = code || '';
     div._opt = LignesOptions.attacher({ prestations: function () { return D.prestations; }, select: s,
       qte: div.querySelector('.e-qte'), conteneur: div.querySelector('.lo-options') });
-    function u() { var p = D.prestations.filter(function (x) { return x.code === s.value; })[0]; div.querySelector('.u').textContent = p ? p.unite : ''; }
+    div._duree = LignesOptions.duree(div.querySelector('.e-qte')); // unité en heures : heures et minutes
+    function u() {
+      var p = D.prestations.filter(function (x) { return x.code === s.value; })[0], h = !!p && LignesOptions.enHeures(p.unite);
+      div._duree.mode(h); div.querySelector('.u').textContent = p && !h ? p.unite : '';
+    }
     s.onchange = u; u();
     div.querySelector('.retirer').onclick = function () { div.remove(); majPhytoBon(); };
     $('b-lignes').appendChild(div);
@@ -946,6 +954,7 @@ textarea{min-height:64px;resize:vertical}
     (m && m.chauffeur ? $('b-lignes').querySelector('.e-qte') : $('b-chauffeur')).focus();
   }
   function erreurBon(t) { $('b-erreur').textContent = t; $('b-erreur').hidden = false; }
+  var dureeHeuresBon = LignesOptions.duree($('b-heures')); dureeHeuresBon.mode(true); // heures de travail en heures et minutes
   $('b-client').onchange = majSarlBon;
   $('b-ajout-ligne').onclick = function () { ligneBon(''); };
   $('b-ajout-intrant').onclick = intrantBon;

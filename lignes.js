@@ -1,6 +1,6 @@
 /**
  * ETA Oillic – options et variantes des prestations
- * Version 1.1 – 2026-11-03
+ * Version 1.2 – 2026-11-05 : quantités en heures saisies en heures et minutes (duree)
  *
  * Options (colonne « Options » de l'onglet Prestations) : suppléments facturés comme un article EBP à part
  *   (ex. broyage de la paille du big baller). Case à cocher sous la prestation ; cochée, elle ajoute une ligne
@@ -9,6 +9,8 @@
  * Variantes (colonne « Variantes ») : la prestation n'est qu'un choix (ex. Broyeur) ; le chauffeur choisit
  *   la variante (Broyeur 3 m / 4 m), seul l'article de la variante part sur le bon.
  * Options et variantes ne sont pas proposées seules dans les listes de prestations.
+ * Durées (v1.2) : pour une unité en heures, la quantité se saisit en heures et minutes ; le champ d'origine,
+ *   masqué, garde la valeur en heures décimales arrondies au centième (2 h 30 → 2,5 ; 2 h 10 → 2,17), comme dans EBP.
  * Utilisé par index.html (téléphone), bureau.html (saisie) et gestion.html (correction).
  */
 (function () {
@@ -28,8 +30,56 @@
       + '.lo-opt>label input{width:22px;height:22px;min-height:0;margin:0;flex:none}'
       + '.lo-qte{grid-column:1/-1;display:flex;align-items:center;gap:8px}'
       + '.lo-qte input{max-width:130px;margin:0}'
-      + '.lo-qte small{color:var(--doux,#53636F)}';
+      + '.lo-qte small{color:var(--doux,#53636F)}'
+      + '.lo-duree{display:flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0}'
+      + '.lo-duree input{display:block;flex:1 1 0;min-width:2.6em;width:auto;margin:0;text-align:right}'
+      + '.lo-duree b{font-weight:700;flex:none}';
     document.head.appendChild(s);
+  }
+
+  /** Unité en heures (h, heure, heures). */
+  function enHeures(u) { return /^h(eures?)?$/i.test(String(u || '').trim()); }
+  /** 2,5 → « 2 h 30 » ; '' si vide. */
+  function hm(v) {
+    var n = typeof v === 'number' ? v : nombre(v);
+    if (isNaN(n) || v === '' || v == null) return '';
+    var t = Math.round(n * 60), h = Math.floor(t / 60), m = t % 60;
+    return h + ' h ' + String(m).padStart(2, '0');
+  }
+  /**
+   * Saisie en heures et minutes d'un champ de quantité (ou d'heures de travail) : deux cases à côté du champ,
+   * qui est masqué et reçoit la valeur en heures décimales (événement « input »).
+   * Renvoie { mode(enHeures), maj() } : maj() relit le champ après une modification faite par le programme.
+   */
+  function duree(input) {
+    css();
+    var box = document.createElement('span');
+    box.className = 'lo-duree'; box.hidden = true;
+    box.innerHTML = '<input type="text" class="lo-h" inputmode="numeric" autocomplete="off" aria-label="Heures" placeholder="0"><b>h</b>'
+      + '<input type="text" class="lo-m" inputmode="numeric" autocomplete="off" aria-label="Minutes" placeholder="00"><b>min</b>';
+    input.insertAdjacentElement('afterend', box);
+    var h = box.querySelector('.lo-h'), m = box.querySelector('.lo-m'), actif = false;
+    function depuisDecimal() {
+      var v = nombre(input.value);
+      if (isNaN(v)) { h.value = ''; m.value = ''; return; }
+      var t = Math.round(v * 60);
+      h.value = String(Math.floor(t / 60)); m.value = String(t % 60).padStart(2, '0');
+    }
+    function versDecimal() {
+      var hs = h.value.trim(), ms = m.value.trim();
+      if (!hs && !ms) input.value = '';
+      else {
+        var hv = hs ? nombre(hs) : 0, mv = ms ? nombre(ms) : 0;
+        input.value = isNaN(hv) || isNaN(mv) || hv < 0 || mv < 0 ? '?' : fr(Math.round((hv + mv / 60) * 100) / 100);
+      }
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    h.addEventListener('input', versDecimal);
+    m.addEventListener('input', versDecimal);
+    return {
+      mode: function (oui) { actif = !!oui; box.hidden = !actif; input.hidden = actif; if (actif) depuisDecimal(); },
+      maj: function () { if (actif) depuisDecimal(); }
+    };
   }
 
   /** Codes rattachés à une autre prestation active (options et variantes). */
@@ -96,10 +146,15 @@
         var e = etat[c] || {};
         return '<div class="lo-opt" data-option="' + esc(c) + '"><label><input type="checkbox" class="lo-coche"' + (e.coche ? ' checked' : '') + '> Option : ' + esc(x.libelle) + '</label>'
           + '<div class="lo-qte"' + (e.coche ? '' : ' hidden') + '><input type="text" inputmode="decimal" autocomplete="off" class="lo-q" aria-label="Quantité de l\'option" value="' + esc(e.quantite || '') + '">'
-          + '<b>' + esc(x.unite) + '</b><small>au plus la quantité de la prestation</small></div></div>';
+          + (enHeures(x.unite) ? '' : '<b>' + esc(x.unite) + '</b>') + '<small>au plus la quantité de la prestation</small></div></div>';
       }).join('');
       o.conteneur.innerHTML = h;
       o.conteneur.hidden = !h;
+      // Options en heures : saisie en heures et minutes
+      Array.prototype.forEach.call(o.conteneur.querySelectorAll('.lo-opt'), function (d) {
+        var x = trouver(d.getAttribute('data-option'));
+        if (x && enHeures(x.unite)) { d._duree = duree(d.querySelector('.lo-q')); d._duree.mode(true); }
+      });
     }
     function lireEtat() {
       var v = o.conteneur.querySelector('.lo-variante'); if (v) variante = v.value;
@@ -109,7 +164,7 @@
         e.quantite = d.querySelector('.lo-q').value.trim();
       });
     }
-    function synchro(d, e) { if (e.coche && !e.manuel) { e.quantite = o.qte.value.trim(); d.querySelector('.lo-q').value = e.quantite; } }
+    function synchro(d, e) { if (e.coche && !e.manuel) { e.quantite = o.qte.value.trim(); d.querySelector('.lo-q').value = e.quantite; if (d._duree) d._duree.maj(); } }
     o.conteneur.addEventListener('change', function (ev) {
       if (ev.target.classList.contains('lo-variante')) { lireEtat(); dessiner(); return; }
       if (!ev.target.classList.contains('lo-coche')) return;
@@ -120,7 +175,7 @@
       synchro(d, e);
     });
     o.conteneur.addEventListener('input', function (ev) {
-      if (!ev.target.classList.contains('lo-q')) return;
+      if (!ev.target.classList.contains('lo-q')) return; // cases heures/minutes : la valeur arrive par le champ de l'option
       var c = ev.target.closest('.lo-opt').getAttribute('data-option');
       var e = etat[c] = etat[c] || {};
       e.quantite = ev.target.value.trim(); e.manuel = e.quantite !== o.qte.value.trim();
@@ -175,7 +230,7 @@
           var x = trouver(l[i].code) || { libelle: l[i].code };
           var qo = nombre(l[i].quantite);
           if (!(qo > 0)) return 'Prestation ' + n + ', option « ' + x.libelle + ' » : indiquez la quantité.';
-          if (q > 0 && qo > q + 1e-9) return 'Prestation ' + n + ', option « ' + x.libelle + ' » : la quantité ne peut pas dépasser celle de la prestation (' + fr(q) + ').';
+          if (q > 0 && qo > q + 1e-9) return 'Prestation ' + n + ', option « ' + x.libelle + ' » : la quantité ne peut pas dépasser celle de la prestation (' + (enHeures(x.unite) ? hm(q) : fr(q)) + ').';
         }
         return '';
       },
@@ -183,5 +238,6 @@
     };
   }
 
-  window.LignesOptions = { attacher: attacher, grouper: grouper, principales: principales, groupeDe: groupeDe, codesRattaches: codesRattaches };
+  window.LignesOptions = { attacher: attacher, grouper: grouper, principales: principales, groupeDe: groupeDe, codesRattaches: codesRattaches,
+    duree: duree, enHeures: enHeures, hm: hm };
 })();
