@@ -44,7 +44,7 @@
     var n = typeof v === 'number' ? v : nombre(v);
     if (isNaN(n) || v === '' || v == null) return '';
     var t = Math.round(n * 60), h = Math.floor(t / 60), m = t % 60;
-    return h + ' h ' + String(m).padStart(2, '0');
+    return h + '\u00a0h\u00a0' + String(m).padStart(2, '0'); // espaces insécables : « 2 h 30 » jamais coupé
   }
   /**
    * Saisie en heures et minutes d'un champ de quantité (ou d'heures de travail) : deux cases à côté du champ,
