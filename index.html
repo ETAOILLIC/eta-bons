@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – index.html – Version 0.20 – 2026-11-05 (chronomètre des bons ; correctif de largeur sur téléphone) -->
+<!-- ETA Oillic – index.html – Version 0.21 – 2026-11-13 (épandage de boues : station, preneur, parcelles et volume) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -381,7 +381,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
           + '<span class="quand"><b>' + esc(etiquette) + '</b>' + (precision ? '<small>' + esc(precision) + '</small>' : '') + '</span>'
           + '<span class="quoi"><b>' + esc(m.clientNom) + '</b>'
           + '<span class="detail">' + esc(m.prestationLibelle) + (m.lieu ? ', ' + esc(m.lieu) : '') + '</span>'
-          + ((m.plages || []).length || (m.preneurs || []).length ? '<span class="detail">' + esc(Precisions.resume(m.plages, m.preneurs)) + '</span>' : '')
+          + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues ? '<span class="detail">' + esc(Precisions.resume(m.plages, m.preneurs, bouesMission(m))) + '</span>' : '')
           + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
           + (m.equipe && m.equipe.length ? '<span class="consigne">Équipe : ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + '</span>' : '')
           + (m.chrono ? '<span class="chrono ' + classeChrono(m.chrono) + '">' + esc(texteChrono(m.chrono)) + '</span>' : '')
@@ -411,7 +411,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     $('rappel').hidden = !m;
     if (m) {
       $('rappel').innerHTML = '<b>' + esc(m.clientNom) + '</b><br>' + esc(m.prestationLibelle)
-        + (m.lieu ? ', ' + esc(m.lieu) : '') + ((m.plages || []).length || (m.preneurs || []).length ? '<br>' + esc(Precisions.resume(m.plages, m.preneurs)) : '')
+        + (m.lieu ? ', ' + esc(m.lieu) : '') + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues ? '<br>' + esc(Precisions.resume(m.plages, m.preneurs, bouesMission(m))) : '')
         + (m.consignes ? '<br>' + esc(m.consignes) : '')
         + (m.equipe && m.equipe.length ? '<br>Avec ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + ' : chacun fait son bon.' : '')
         + (m.prescription && !m.valideAvantLe ? '<br><b>Traitement : vérifiez la prescription du bureau, puis validez-la avant de démarrer.</b>' : '');
@@ -431,7 +431,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (pr && pr.valideAvantLe) $('f-client').disabled = true;
     $('parcelles-erreur').textContent = D.parcelles.erreur || '';
     $('parcelles-erreur').hidden = !D.parcelles.erreur;
-    blocPrec.remplir(m ? { plages: m.plages, preneurs: m.preneurs } : null); // plages et preneurs prévus par le bureau
+    blocPrec.remplir(m ? { plages: m.plages, preneurs: m.preneurs, station: m.station, preneurBoues: m.preneurBoues } : null); // prévus par le bureau
     $('lignes').innerHTML = '';
     ajouterLigne(m ? m.prestation : '');
     if (pr) $('lignes').querySelector('.ligne')._opt.cocherPhyto(); // prescription : l'option phyto de la prestation est cochée
@@ -608,7 +608,19 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
   // Plages, preneurs et remorques (precisions.js) : demandés par certaines prestations (collecte des algues)
   var blocPrec = Precisions.monter($('precisions'), { cadre: $('bloc-prec'), bouton: 'secondaire',
     clients: function () { return D ? D.clients : []; }, prestations: function () { return D ? D.prestations : []; },
-    preneurs: function () { return D ? D.preneurs || [] : []; } });
+    preneurs: function () { return D ? D.preneurs || [] : []; },
+    // Épandage de boues : preneurs, parcelles de la SARL, client proposé (SAUR)
+    preneursBoues: function () { return D ? D.preneursBoues || [] : []; },
+    codeSarl: function () { return D ? D.codeClientSarl : ''; },
+    parcellesSarl: function () { return D ? D.parcelles.liste : []; },
+    clientBoues: function () { return D && D.clients.some(function (c) { return c.code === D.clientBoues; }) ? D.clientBoues : ''; },
+    choisirClient: function (code) { if ($('f-client').disabled) return; $('f-client').value = code; majSarl(); },
+    lignes: function () { return $('lignes'); } });
+  /** Station et preneur des boues d'une mission, pour les résumés. */
+  function bouesMission(m) {
+    var p = ((D && D.preneursBoues) || []).filter(function (x) { return x.code === m.preneurBoues; })[0];
+    return { station: m.station || '', preneurNom: p ? p.nom : m.preneurBoues || '', volume: '' };
+  }
   function majPrecisions() {
     var codes = [];
     Array.prototype.forEach.call($('lignes').querySelectorAll('.ligne'), function (l) {
@@ -616,6 +628,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       l._opt.lire().forEach(function (x) { codes.push(x.code); });
     });
     blocPrec.maj($('f-client').value, codes);
+    $('bloc-sarl').hidden = !parcellesSarlVisibles(); // boues : parcelles saisies dans le bloc des boues
   }
   function majPhyto() {
     majPrecisions();
@@ -657,6 +670,8 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
   }
 
   function estSarl() { return !!$('f-client').value && $('f-client').value === D.codeClientSarl; }
+  /** Bloc SARL (parcelles, intrants) : client SARL, sauf bon d'épandage de boues (parcelles dans le bloc des boues). */
+  function parcellesSarlVisibles() { return estSarl() && !blocPrec.besoins().boues; }
   function majSarl() { $('bloc-sarl').hidden = !estSarl(); majLignes(); }
 
   function collecter() {
@@ -667,18 +682,19 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       date: $('f-date').value,
       client: $('f-client').value,
       lieu: $('f-lieu').value.trim(),
-      parcelles: sarl ? parcellesSarl.lire() : [],
+      parcelles: parcellesSarlVisibles() ? parcellesSarl.lire() : [],
       lignes: Array.prototype.reduce.call($('lignes').querySelectorAll('.ligne'), function (r, l) {
         return r.concat([{ code: l._opt.code(), quantite: l.querySelector('.l-qte').value.trim() }], l._opt.lire());
       }, []),
       phyto: estPhyto() ? blocPhyto.lire() : null,
-      intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('intrants').querySelectorAll('.intrant'), function (x) {
+      intrants: !parcellesSarlVisibles() || estPhyto() ? [] : Array.prototype.map.call($('intrants').querySelectorAll('.intrant'), function (x) {
         return { produit: x.querySelector('.i-produit').value.trim(), dose: x.querySelector('.i-dose').value.trim(), unite: x.querySelector('.i-unite').value };
       }).filter(function (x) { return x.produit || x.dose || x.unite; }),
       heures: $('f-heures').value.trim(),
       remarques: $('f-remarques').value.trim(),
       plages: blocPrec.lire().plages,
-      preneurs: blocPrec.lire().preneurs
+      preneurs: blocPrec.lire().preneurs,
+      boues: blocPrec.lire().boues
     };
   }
 
@@ -686,7 +702,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (!b.date) return "Indiquez la date de l'intervention.";
     if (b.date > D.aujourdhui) return "La date de l'intervention ne peut pas être dans le futur.";
     if (!b.client) return 'Choisissez le client.';
-    if (estSarl()) { var epa = parcellesSarl.verifier(estPhyto()); if (epa) return epa; }
+    if (parcellesSarlVisibles()) { var epa = parcellesSarl.verifier(estPhyto()); if (epa) return epa; }
     var ls = $('lignes').querySelectorAll('.ligne');
     for (var i = 0; i < ls.length; i++) {
       if (!ls[i].querySelector('.l-presta').value) return 'Prestation ' + (i + 1) + ' : choisissez la prestation.';

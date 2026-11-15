@@ -1,6 +1,6 @@
 /**
  * ETA Oillic – bloc « Traitement phytosanitaire » des bons (page chauffeur, planning, gestion)
- * Version 1.5 – 2026-11-05 : prescription partielle acceptée dans la mission (verifierPrescription(…, partielle)) ; 1.4 – 2026-11-03 : matériel proposé (incorporation au semis) ; 1.3 : fiche chantier (avant application / validation / après application / informations client),
+ * Version 1.6 – 2026-11-13 : liste de parcelles avec volume (option volume : épandage de boues) ; 1.5 – 2026-11-05 : prescription partielle acceptée dans la mission (verifierPrescription(…, partielle)) ; 1.4 – 2026-11-03 : matériel proposé (incorporation au semis) ; 1.3 : fiche chantier (avant application / validation / après application / informations client),
  *   catalogue des produits, météo MET Norway
  *
  * Informations du registre (arrêté du 24 décembre 2025, annexes I et II) et du référentiel d'agrément :
@@ -220,6 +220,9 @@
     var qa = function (c) { return Array.prototype.slice.call(zone.querySelectorAll(c)); };
     var changement = function () { if (o.surChangement) o.surChangement(); };
 
+    function volumeTotal() {
+      return arrondi(qa('.ph-parcelle').reduce(function (s, d) { var e = d.querySelector('.ph-volume'), v = e ? nombre(e.value) : NaN; return s + (v > 0 ? v : 0); }, 0), 2);
+    }
     function surfaceTotale() {
       return arrondi(qa('.ph-parcelle').reduce(function (s, d) { var v = nombre(d.querySelector('.ph-surface').value); return s + (v > 0 ? v : 0); }, 0), 4);
     }
@@ -230,7 +233,9 @@
         d.querySelector('.ph-retirer-parcelle').hidden = l.length <= 1;
       });
       conteneur.querySelector('.ph-ajout-parcelle').hidden = l.length >= max;
-      conteneur.querySelector('.ph-total').textContent = l.length > 1 ? 'Surface totale : ' + fr(surfaceTotale()) + ' ha'
+      conteneur.querySelector('.ph-total').textContent = o.volume
+        ? 'Volume total : ' + fr(volumeTotal()) + ' m³' + (l.length > 1 && o.codes ? ' – quantités et heures réparties entre les parcelles au prorata des volumes' : '')
+        : l.length > 1 ? 'Surface totale : ' + fr(surfaceTotale()) + ' ha'
         + (o.codes ? ' – quantités et heures réparties entre les parcelles au prorata des surfaces' : '') : '';
       conteneur.classList.toggle('ph-pos-masque', !avecPos);
     }
@@ -259,15 +264,17 @@
       d.className = 'ph-item ph-parcelle';
       d.innerHTML = '<div class="ph-item-tete"><span class="ph-num"></span><button type="button" class="ph-retirer ph-retirer-parcelle">Retirer</button></div>'
         + '<div class="ph-grille">'
-        + (o.codes ? '<label>Parcelle (îlot PAC)<select class="ph-code">' + optionsCodes(x.code) + '</select></label>'
-          : '<label>Nom de la parcelle<input type="text" class="ph-nom-parcelle" maxlength="80" autocomplete="off" placeholder="ex. Grand champ"></label>')
-        + '<label>Surface (ha)<input type="text" inputmode="decimal" class="ph-surface" autocomplete="off"></label></div>'
+        + (o.codes ? '<label' + (o.volume ? ' style="grid-column:1/-1"' : '') + '>Parcelle (îlot PAC)<select class="ph-code">' + optionsCodes(x.code) + '</select></label>'
+          : '<label' + (o.volume ? ' style="grid-column:1/-1"' : '') + '>Nom de la parcelle<input type="text" class="ph-nom-parcelle" maxlength="80" autocomplete="off" placeholder="ex. Grand champ"></label>')
+        + '<label>Surface (ha)' + (o.volume && !o.surfaceRequise ? ' <small class="ph-note">facultatif</small>' : '') + '<input type="text" inputmode="decimal" class="ph-surface" autocomplete="off"></label>'
+        + (o.volume ? '<label>Volume (m³ ou t)<input type="text" inputmode="decimal" class="ph-volume" autocomplete="off"></label>' : '') + '</div>'
         + '<div class="ph-boutons-pos">'
         + (o.gps ? '<button type="button" class="' + bt + ' ph-gps">Ma position</button>' : '')
         + '<button type="button" class="' + bt + ' ph-carte">Choisir sur la carte</button></div>'
         + '<span class="ph-pos"></span>';
       if (!o.codes) d.querySelector('.ph-nom-parcelle').value = x.nom || '';
       d.querySelector('.ph-surface').value = fr(x.surface);
+      if (o.volume) d.querySelector('.ph-volume').value = fr(x.volume);
       d._pos = { lat: x.lat === undefined || x.lat === null ? '' : x.lat, lon: x.lon === undefined || x.lon === null ? '' : x.lon,
         precision: x.precision === undefined ? '' : x.precision, origine: x.origine || '' };
       zone.appendChild(d);
@@ -326,6 +333,7 @@
         return qa('.ph-parcelle').map(function (d) {
           return { code: o.codes ? d.querySelector('.ph-code').value : '', nom: nomDe(d),
             surface: d.querySelector('.ph-surface').value.trim(),
+            volume: o.volume ? d.querySelector('.ph-volume').value.trim() : '',
             lat: d._pos.lat === '' ? '' : String(d._pos.lat), lon: d._pos.lon === '' ? '' : String(d._pos.lon),
             precision: d._pos.precision, origine: d._pos.origine };
         });
@@ -336,13 +344,16 @@
         for (var i = 0; i < l.length; i++) {
           var t = (l.length > 1 ? 'Parcelle ' + (i + 1) : 'Parcelle') + ' : ';
           if (o.codes && !l[i].code) return t + 'choisissez la parcelle.';
-          if ((surfaces || l.length > 1) && !(nombre(l[i].surface) > 0)) return t + 'indiquez la surface (ha)' + (l.length > 1 ? ' pour répartir les quantités.' : '.');
+          if (!o.codes && o.volume && !l[i].nom) return t + 'indiquez le nom de la parcelle.';
+          if (o.volume && !(nombre(l[i].volume) > 0)) return t + 'indiquez le volume de boues (m³ ou t).';
+          if ((surfaces || (l.length > 1 && !o.volume)) && !(nombre(l[i].surface) > 0)) return t + 'indiquez la surface (ha)' + (l.length > 1 ? ' pour répartir les quantités.' : '.');
           if (l[i].surface && !(nombre(l[i].surface) > 0)) return t + 'surface invalide.';
         }
         return '';
       },
       sansPosition: function () { return liste.lire().filter(function (p) { return p.lat === '' || p.lon === ''; }).length; },
       surfaceTotale: surfaceTotale,
+      volumeTotal: volumeTotal,
       nombre: function () { return qa('.ph-parcelle').length; },
       afficherPositions: function (oui) { avecPos = !!oui; maj(); },
       limiter: function (n) { max = n || o.max || MAX_PARCELLES; qa('.ph-parcelle').slice(max).forEach(function (d) { d.remove(); }); maj(); },
