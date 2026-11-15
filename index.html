@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – index.html – Version 0.21 – 2026-11-13 (épandage de boues : station, preneur, parcelles et volume) -->
+<!-- ETA Oillic – index.html – Version 0.22 – 2026-11-15 (rapidité : dernières données affichées dès l'ouverture, chronomètre et envoi du bon sans attente) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -113,6 +113,9 @@ label > .lo-duree{margin-top:6px}
 .quoi .chrono.pause{background:var(--ambre);color:#2A1E05}
 .quoi .chrono.fini{background:var(--trait);color:var(--encre)}
 .info{background:var(--vert-pale);border-radius:8px;padding:10px 12px;font-weight:700;margin:0 0 12px}
+.info.echec{background:var(--rouge-pale);color:var(--rouge)}
+.maj{font-size:14px;opacity:.75;margin:0 0 10px}
+.coche.attente{opacity:.55}
 .lo-duree input{min-height:52px}
 /* Pièces jointes */
 .pj-aide{margin:2px 0 6px;color:var(--doux);font-size:15px}
@@ -164,7 +167,9 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       <p id="alerte-texte"></p>
       <button type="button" class="secondaire" id="btn-reessayer">Réessayer</button>
     </div>
+    <p class="info" id="envoi-info" role="status" hidden></p>
     <button type="button" class="principal" id="btn-nouveau">Nouveau bon sans mission</button>
+    <p class="maj" id="maj" role="status" hidden></p>
     <h2>Mes missions</h2>
     <ul id="liste-missions"></ul>
     <h2>Mes derniers bons</h2>
@@ -182,6 +187,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
         <div class="chrono-temps" id="chrono-temps">0 h 00</div>
         <p class="chrono-etat" id="chrono-etat"></p>
         <p class="info" id="chrono-info" hidden></p>
+        <p class="maj" id="chrono-sync" role="status" hidden>Enregistrement…</p>
         <div class="chrono-boutons">
           <button type="button" class="principal seul" id="chrono-demarrer">▶ Démarrer</button>
           <button type="button" class="secondaire" id="chrono-pause">⏸ Pause</button>
@@ -252,9 +258,10 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
 
   <!-- Confirmation -->
   <section id="vue-ok" class="ok" hidden>
-    <div class="coche" aria-hidden="true">✓</div>
-    <h1>Bon envoyé</h1>
+    <div class="coche" id="ok-coche" aria-hidden="true">✓</div>
+    <h1 id="ok-titre">Bon envoyé</h1>
     <p class="numero" id="ok-numero"></p>
+    <p id="ok-attente" hidden>L'envoi continue : vous pouvez revenir à vos missions. Gardez l'application ouverte jusqu'à la confirmation.</p>
     <div class="ok-pj" id="ok-pj" hidden></div>
     <button type="button" class="principal" id="btn-ok">Retour à mes missions</button>
     <button type="button" class="secondaire" id="btn-ok-nouveau">Faire un autre bon</button>
@@ -280,21 +287,55 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
   } catch (e) { /* stockage indisponible : on garde le jeton du lien */ }
 
   /** Appel au moteur : POST en texte simple (pas de requête préalable CORS, pas de cookie Google). */
-  function appel(action, donnees) {
+  /**
+   * garderEnVie (v0.22) : la requête va au bout même si la page est fermée juste après l'appui
+   * (chronomètre, envoi du bon), dans la limite de taille admise par les navigateurs.
+   */
+  function appel(action, donnees, garderEnVie) {
     var corps = { action: action, jeton: JETON };
     for (var k in donnees) corps[k] = donnees[k];
-    return fetch(API, { method: 'POST', body: JSON.stringify(corps), credentials: 'omit', redirect: 'follow' })
+    var texte = JSON.stringify(corps), depart = Date.now();
+    var opt = { method: 'POST', body: texte, credentials: 'omit', redirect: 'follow' };
+    var envoi;
+    if (garderEnVie && texte.length < 60000) {
+      var opt2 = { method: 'POST', body: texte, credentials: 'omit', redirect: 'follow', keepalive: true };
+      try { envoi = fetch(API, opt2); } catch (e) { envoi = fetch(API, opt); }
+    } else envoi = fetch(API, opt);
+    return envoi
       .catch(function () { throw new Error('Pas de connexion au serveur. Vérifiez le réseau.'); })
       .then(function (r) {
         if (!r.ok) throw new Error('Serveur indisponible (code ' + r.status + ').');
         return r.json().catch(function () { throw new Error('Réponse illisible du serveur.'); });
       })
       .then(function (j) {
+        if (j.duree && window.console) console.log('[ETA] ' + action + ' : ' + (Date.now() - depart) + ' ms au total, serveur ' + j.duree.ms + ' ms, ' + j.duree.lectures + ' lectures (' + j.duree.msLecture + ' ms)');
         if (!j.ok) throw new Error(j.erreur || 'Erreur inconnue.');
         return j.resultat;
       });
   }
   var D = null, mission = null, idEnvoi = null, modifie = false, envoiEnCours = false;
+  var decalage = 0;        // heure du serveur moins heure du téléphone (chronomètres)
+  var recuLe = 0;          // heure de réception des données affichées
+  var fileChrono = Promise.resolve(), chronoEnAttente = 0, rechargerApres = false; // appuis sur le chronomètre en cours d'enregistrement
+
+  // Dernières données reçues, gardées sur le téléphone : affichées dès l'ouverture, mises à jour ensuite (v0.22)
+  var CLE_D = 'eta-bons-donnees';
+  function garder() {
+    try { if (D) localStorage.setItem(CLE_D, JSON.stringify({ jeton: JETON, recu: recuLe, decalage: decalage, d: D })); } catch (e) {}
+  }
+  function reprendre() {
+    try {
+      var x = JSON.parse(localStorage.getItem(CLE_D) || 'null');
+      if (x && x.jeton === JETON && x.d && x.d.missions && x.d.clients && x.d.prestations) { recuLe = x.recu || 0; decalage = x.decalage || 0; return x.d; }
+    } catch (e) {}
+    return null;
+  }
+  function aujLocal() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function etatMaj(t) { $('maj').textContent = t || ''; $('maj').hidden = !t; }
+  function heureCourte(ms) { return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
   var pieces = [], lotPieces = null; // pièces du bon en cours de saisie / du dernier bon envoyé
 
   function $(id) { return document.getElementById(id); }
@@ -330,26 +371,38 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
   function charger(silencieux) {
     if (!JETON) { $('chargement').hidden = true; vue('lien'); return; }
     if (!silencieux) $('chargement').hidden = false;
+    if (D) etatMaj('Mise à jour…');
     appel('charger', {})
       .then(function (d) {
+        // Un appui sur le chronomètre est en cours d'enregistrement : cette réponse est peut-être déjà
+        // dépassée, on recharge quand l'enregistrement est fini
+        if (chronoEnAttente) { rechargerApres = true; return; }
         D = d;
+        recuLe = Date.now();
+        decalage = (d.maintenant || recuLe) - recuLe;
         D.missions.forEach(function (m) { preparerChrono(m.chrono, d.maintenant); });
-        if (mission && !$('vue-bon').hidden) { // bon ouvert : chronomètre à jour
+        garder();
+        if (mission && mission.id && !$('vue-bon').hidden) { // bon ouvert : chronomètre à jour
           var mm = D.missions.filter(function (x) { return x.id === mission.id; })[0];
           if (mm && mm.chrono) { mission.chrono = mm.chrono; dessinerChrono(); }
         }
         $('chargement').hidden = true;
         $('alerte').hidden = true;
+        etatMaj('');
         afficherAccueil();
         if (!silencieux) vue('accueil');
       })
       .catch(function (e) {
         $('chargement').hidden = true;
-        if (silencieux) return;
         if (/Lien non valide/.test(e.message)) {
-          try { localStorage.removeItem(CLE); } catch (x) {}
+          try { localStorage.removeItem(CLE); localStorage.removeItem(CLE_D); } catch (x) {}
+          D = null;
           $('lien-texte').textContent = e.message;
           vue('lien');
+          return;
+        }
+        if (silencieux) {
+          etatMaj(D && recuLe ? 'Mise à jour impossible (réseau ?) : données de ' + heureCourte(recuLe) + '.' : '');
           return;
         }
         $('alerte-texte').textContent = 'Chargement impossible : ' + e.message;
@@ -401,6 +454,11 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
 
   // ------------------------------------------------------------ Saisie du bon
   function ouvrirBon(m) {
+    if (envoiEnCours) { // le formulaire sert encore au bon en cours d'envoi (il est rendu tel quel si l'envoi échoue)
+      $('envoi-info').className = 'info'; $('envoi-info').hidden = false;
+      $('envoi-info').textContent = 'Le bon précédent est en cours d\'envoi : réessayez dans quelques secondes.';
+      return;
+    }
     mission = m || null;
     idEnvoi = uuid();
     modifie = false;
@@ -439,7 +497,8 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     majSarl();
     $('erreur').hidden = true;
     etatEnvoi(false);
-    $('chrono-info').hidden = true;
+    infoChrono('');
+    $('chrono-sync').hidden = !chronoEnAttente;
     dessinerChrono();
     if (m && m.chrono && m.chrono.etat === 'Fini') remplirTemps(minutesChrono(m.chrono)); // chronomètre déjà arrêté
     vue('bon');
@@ -474,7 +533,37 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     $('chrono-fini').hidden = !(etat === 'En cours' || etat === 'En pause');
     $('chrono-reprendre').className = etat === 'Fini' ? 'secondaire seul' : 'principal';
   }
-  function boutonsChrono(actif) { ['demarrer', 'pause', 'reprendre', 'fini'].forEach(function (a) { $('chrono-' + a).disabled = !actif; }); }
+  /** État du chronomètre après un appui, calculé sur le téléphone (même règle que Chrono.gs). */
+  function chronoApres(c, action, quand) {
+    var segs = (c ? c.segments || [] : []).map(function (x) { return [x[0], x[1] || null]; });
+    if (action === 'demarrer' || action === 'reprendre') {
+      if (!(c && c.etat === 'En cours')) segs.push([quand, null]);
+    } else {
+      segs.forEach(function (x) { if (!x[1]) x[1] = quand; });
+    }
+    return { etat: action === 'fini' ? 'Fini' : action === 'pause' ? 'En pause' : 'En cours', segments: segs, decalage: decalage };
+  }
+  /** Le chronomètre du bon ouvert est aussi celui de la mission dans la liste. */
+  function lierChrono(m) {
+    if (!D || !m.id) return;
+    var mm = D.missions.filter(function (x) { return x.id === m.id; })[0];
+    if (mm && mm !== m) mm.chrono = m.chrono;
+  }
+  function infoChrono(texte, echec) {
+    $('chrono-info').className = 'info' + (echec ? ' echec' : '');
+    $('chrono-info').textContent = texte; $('chrono-info').hidden = !texte;
+  }
+  function finFileChrono() {
+    if (chronoEnAttente) return;
+    $('chrono-sync').hidden = true;
+    garder();
+    if (rechargerApres) { rechargerApres = false; charger(true); }
+  }
+  /**
+   * Appui sur un bouton du chronomètre (v0.22) : l'écran réagit tout de suite, avec l'heure de l'appui ;
+   * l'enregistrement part en arrière-plan, un appui après l'autre. En cas d'échec, l'écran revient à
+   * l'état précédent avec un message.
+   */
   function actionChrono(action) {
     if (action === 'fini' && !confirm('Arrêter le chronomètre ? Le temps sera inscrit dans le bon ; vous pourrez le corriger avant de l\'envoyer.')) return;
     var d = { idMission: mission ? mission.id : '', action: action };
@@ -486,25 +575,62 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       if (!d.prestation) { montrerErreur('Choisissez la prestation avant de démarrer le chronomètre.'); return; }
     }
     $('erreur').hidden = true;
-    boutonsChrono(false);
-    appel('chrono', { chrono: d })
-      .then(function (r) {
-        boutonsChrono(true);
-        if (!mission) {
-          mission = { id: r.idMission, client: d.client };
-          $('titre-bon').textContent = 'Bon du chantier en cours';
+    var quand = Date.now() + decalage; // heure de l'appui, à l'heure du serveur
+    d.quand = quand;
+    var surPlace = !mission, titreAvant = $('titre-bon').textContent;
+    if (surPlace) { // bon sans mission : la mission est créée par le serveur, son numéro arrive avec la réponse
+      mission = { id: '', client: d.client };
+      $('titre-bon').textContent = 'Bon du chantier en cours';
+      rechargerApres = true; // la nouvelle mission doit apparaître dans la liste
+    }
+    var m0 = mission, chronoAvant = m0.chrono || null, autres = [];
+    m0.chrono = chronoApres(chronoAvant, action, quand);
+    if (action === 'demarrer' || action === 'reprendre') { // un seul chronomètre en marche
+      (D.missions || []).forEach(function (x) {
+        if (x !== m0 && (!m0.id || x.id !== m0.id) && x.chrono && x.chrono.etat === 'En cours') {
+          autres.push({ m: x, avant: x.chrono });
+          x.chrono = chronoApres(x.chrono, 'pause', quand);
         }
-        mission.chrono = preparerChrono(r.chrono);
+      });
+    }
+    lierChrono(m0);
+    dessinerChrono();
+    infoChrono(autres.length ? 'Mis en pause : ' + autres.map(function (a) { return a.m.clientNom + ' (' + a.m.prestationLibelle + ')'; }).join(', ') + '.' : '');
+    if (action === 'fini') remplirTemps(minutesChrono(m0.chrono));
+    modifie = true;
+    chronoEnAttente++;
+    $('chrono-sync').hidden = false;
+    fileChrono = fileChrono.then(function () {
+      d.idMission = m0.id; // connu après la réponse du « Démarrer » d'un bon sans mission
+      if (!d.idMission && action !== 'demarrer') throw new Error('le chronomètre n\'a pas pu être démarré.');
+      return appel('chrono', { chrono: d }, true);
+    }).then(function (r) {
+      chronoEnAttente--;
+      m0.id = r.idMission;
+      if (!chronoEnAttente) { // dernier appui enregistré : on reprend l'état exact du serveur
+        var local = minutesChrono(m0.chrono);
+        m0.chrono = preparerChrono(r.chrono);
+        lierChrono(m0);
+        if (mission === m0) {
+          dessinerChrono();
+          if (action === 'fini' && minutesChrono(m0.chrono) !== local) remplirTemps(minutesChrono(m0.chrono));
+        }
+      }
+      finFileChrono();
+    }).catch(function (e) {
+      chronoEnAttente--;
+      // Retour à l'état d'avant l'appui ; la liste est rechargée pour repartir de ce que le serveur a enregistré
+      m0.chrono = chronoAvant;
+      autres.forEach(function (a) { a.m.chrono = a.avant; });
+      lierChrono(m0);
+      rechargerApres = true;
+      if (mission === m0) {
+        if (surPlace && !m0.id) { mission = null; $('titre-bon').textContent = titreAvant; }
         dessinerChrono();
-        var info = r.misEnPause && r.misEnPause.length ? 'Mis en pause : ' + r.misEnPause.map(function (id) {
-          var x = (D.missions || []).filter(function (y) { return y.id === id; })[0];
-          return x ? x.clientNom + ' (' + x.prestationLibelle + ')' : id;
-        }).join(', ') + '.' : '';
-        $('chrono-info').textContent = info; $('chrono-info').hidden = !info;
-        if (action === 'fini') remplirTemps(minutesChrono(mission.chrono));
-        charger(true); // liste des missions à jour (chronomètres)
-      })
-      .catch(function (e) { boutonsChrono(true); montrerErreur(e.message); });
+        infoChrono('Chronomètre non enregistré : ' + e.message + ' Appuyez à nouveau.', true);
+      }
+      finFileChrono();
+    });
   }
   /** Temps mesuré → heures de travail et quantité de la prestation à l'heure (s'il n'y en a qu'une) ; date du jour de fin. */
   function remplirTemps(min) {
@@ -581,8 +707,10 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (!l) return Promise.reject(new Error('Choisissez la prestation de traitement.'));
     if (estSarl()) { var epa = parcellesSarl.verifier(true); if (epa) return Promise.reject(new Error(epa)); }
     if (!confirm('Valider la prescription et démarrer le chantier ? La validation est enregistrée à votre nom, avec la date et l\'heure.')) return Promise.resolve(null);
-    return appel('validerAvant', { validation: { idMission: mission ? mission.id : '', client: $('f-client').value,
-      prestation: l._opt.code(), lieu: $('f-lieu').value.trim(), phyto: d.phyto, conforme: d.conforme, demarches: d.demarches } })
+    return fileChrono.then(function () { // après les appuis du chronomètre encore en cours d'enregistrement
+      return appel('validerAvant', { validation: { idMission: mission ? mission.id : '', client: $('f-client').value,
+        prestation: l._opt.code(), lieu: $('f-lieu').value.trim(), phyto: d.phyto, conforme: d.conforme, demarches: d.demarches } });
+    })
       .then(function (r) {
         if (!mission) {
           mission = { id: r.idMission, client: $('f-client').value };
@@ -741,21 +869,59 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     }
     $('erreur').hidden = true;
     etatEnvoi(true);
-    appel('enregistrer', { bon: b })
+    // v0.22 : la confirmation s'affiche tout de suite (« envoi en cours »), l'envoi continue en arrière-plan ;
+    // le formulaire reste en l'état : en cas de refus, il est rendu avec le message.
+    var mEnvoi = mission, piecesEnvoi = pieces;
+    montrerEnvoi('cours');
+    vue('ok');
+    fileChrono.then(function () { // après les appuis du chronomètre encore en cours d'enregistrement
+      b.idMission = mEnvoi ? mEnvoi.id : '';
+      return appel('enregistrer', { bon: b }, true);
+    })
       .then(function (r) {
         etatEnvoi(false);
         modifie = false;
-        $('ok-numero').textContent = 'N° ' + r.numero;
-        lotPieces = { numero: r.numero, pieces: pieces };
+        // Listes à jour sans attendre : mission retirée, bon en tête des derniers bons
+        if (mEnvoi && mEnvoi.id) D.missions = D.missions.filter(function (x) { return x.id !== mEnvoi.id; });
+        if (!D.bons.some(function (x) { return x.numero === r.numero; })) {
+          var cl = D.clients.filter(function (c) { return c.code === b.client; })[0];
+          D.bons.unshift({ numero: r.numero, date: b.date, clientNom: cl ? cl.nom : b.client });
+          D.bons = D.bons.slice(0, 10);
+        }
+        garder();
+        afficherAccueil();
+        lotPieces = { numero: r.numero, pieces: piecesEnvoi };
         pieces = [];
-        vue('ok');
+        montrerEnvoi('ok', r.numero);
+        if (piecesEnvoi.length) vue('ok'); // suivi de l'envoi des pièces jointes
         envoyerPieces(lotPieces).then(function () { charger(true); });
       })
       .catch(function (e) {
         etatEnvoi(false);
+        montrerEnvoi('');
+        vue('bon');
         montrerErreur('Bon non enregistré : ' + e.message
           + ' Vous pouvez appuyer à nouveau sur « Envoyer le bon » : il ne sera jamais enregistré deux fois.');
+        try { $('erreur').scrollIntoView({ block: 'center' }); } catch (x) {}
       });
+  }
+
+  /** Écran de confirmation et bandeau de l'accueil : 'cours' (envoi en arrière-plan), 'ok' (numéro reçu), '' (rien). */
+  var minuteurEnvoi = null;
+  function montrerEnvoi(etat, numero) {
+    var cours = etat === 'cours';
+    $('ok-coche').textContent = cours ? '…' : '✓';
+    $('ok-coche').className = 'coche' + (cours ? ' attente' : '');
+    $('ok-titre').textContent = cours ? 'Envoi du bon…' : 'Bon envoyé';
+    $('ok-numero').textContent = etat === 'ok' ? 'N° ' + numero : '';
+    $('ok-attente').hidden = !cours;
+    $('btn-ok-nouveau').disabled = cours;
+    if (cours) $('ok-pj').hidden = true;
+    clearTimeout(minuteurEnvoi);
+    $('envoi-info').className = 'info';
+    $('envoi-info').textContent = cours ? 'Envoi du bon en cours…' : etat === 'ok' ? '✓ Bon ' + numero + ' envoyé.' : '';
+    $('envoi-info').hidden = !etat;
+    if (etat === 'ok') minuteurEnvoi = setTimeout(function () { $('envoi-info').hidden = true; }, 8000);
   }
 
   // ------------------------------------------------------------ Pièces jointes
@@ -889,7 +1055,23 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
   $('btn-ok').onclick = function () { quitterConfirmation(function () { vue('accueil'); }); };
   $('btn-ok-nouveau').onclick = function () { quitterConfirmation(function () { ouvrirBon(null); }); };
 
-  charger(false);
+  // Retour sur l'application après une absence : la liste est mise à jour sans rien bloquer
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && D && !$('vue-accueil').hidden && !envoiEnCours && Date.now() - recuLe > 60000) charger(true);
+  });
+
+  // Ouverture (v0.22) : les dernières données connues s'affichent tout de suite, la mise à jour suit
+  var enMemoire = JETON ? reprendre() : null;
+  if (enMemoire) {
+    D = enMemoire;
+    D.aujourdhui = aujLocal();
+    $('chargement').hidden = true;
+    afficherAccueil();
+    vue('accueil');
+    charger(true);
+  } else {
+    charger(false);
+  }
 })();
 </script>
 </body>

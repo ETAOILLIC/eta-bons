@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.21 – 2026-11-13 (épandage de boues : station, preneur, parcelles et volume) -->
+<!-- ETA Oillic – bureau.html – Version 0.22 – 2026-11-15 (rapidité : changement de semaine immédiat, planning affiché dès l'ouverture) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -371,8 +371,11 @@ textarea{min-height:64px;resize:vertical}
   } catch (e) { /* stockage indisponible */ }
 
   var JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-  var D = null;            // données de la semaine affichée
+  var D = null;            // données du planning : plusieurs semaines autour de la semaine affichée (D.fenetre), D.lundi = semaine affichée
   var debut = '';          // lundi demandé ('' = semaine en cours)
+  var finEnreg = 0;        // heure de fin du dernier enregistrement (une réponse de chargement partie avant est dépassée)
+  var numCharge = 0;       // numéro de la dernière demande de chargement (les réponses plus anciennes sont ignorées)
+  var CLE_D = 'eta-planning-donnees'; // dernier planning reçu, gardé sur cet ordinateur : affiché dès l'ouverture (v0.22)
   var enCours = null;      // mission ouverte dans la fiche (null = création)
   var glisse = null;       // id de la mission en cours de glissement
   var occupe = 0;          // nombre d'enregistrements en cours
@@ -402,6 +405,7 @@ textarea{min-height:64px;resize:vertical}
   function appel(action, donnees) {
     var corps = { action: action, jetonBureau: JETON };
     for (var k in donnees) corps[k] = donnees[k];
+    var depart = Date.now();
     return fetch(API, { method: 'POST', body: JSON.stringify(corps), credentials: 'omit', redirect: 'follow' })
       .catch(function () { throw new Error('Pas de connexion au serveur. Vérifiez le réseau.'); })
       .then(function (r) {
@@ -409,6 +413,7 @@ textarea{min-height:64px;resize:vertical}
         return r.json().catch(function () { throw new Error('Réponse illisible du serveur.'); });
       })
       .then(function (j) {
+        if (j.duree && window.console) console.log('[ETA] ' + action + ' : ' + (Date.now() - depart) + ' ms au total, serveur ' + j.duree.ms + ' ms, ' + j.duree.lectures + ' lectures (' + j.duree.msLecture + ' ms)');
         if (!j.ok) throw new Error(j.erreur || 'Erreur inconnue.');
         return j.resultat;
       });
@@ -428,18 +433,30 @@ textarea{min-height:64px;resize:vertical}
     if (!JETON) { $('chargement').hidden = true; $('vue-lien').hidden = false; return; }
     if (!silencieux) { $('chargement').hidden = false; }
     etat('Mise à jour…');
+    var n = ++numCharge, parti = Date.now();
     return appel('bureauCharger', { debut: debut })
       .then(function (d) {
-        D = d; debut = d.lundi;
+        if (n !== numCharge) return; // une demande plus récente est partie (changement de semaine entre-temps)
+        if (parti < finEnreg) return charger(true); // un enregistrement s'est terminé entre-temps : réponse peut-être dépassée
+        // Mise à jour en arrière-plan arrivée pendant une saisie ou un déplacement : on ne change rien sous la main
+        if (silencieux && D && (glisse || saisieOuverte())) { etat(''); return; }
+        var voulu = debut;
+        D = d;
+        // La semaine affichée reste celle demandée en dernier si la réponse la couvre
+        if (voulu && dansFenetre(voulu)) D.lundi = voulu;
+        debut = D.lundi;
+        garder();
         $('chargement').hidden = true; $('vue-planning').hidden = false; $('alerte').hidden = true;
         dessiner();
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       })
       .catch(function (e) {
+        if (n !== numCharge) return;
         $('chargement').hidden = true;
         etat('');
         if (/Lien du bureau non valide/.test(e.message)) {
-          try { localStorage.removeItem(CLE); } catch (x) {}
+          try { localStorage.removeItem(CLE); localStorage.removeItem(CLE_D); } catch (x) {}
+          D = null;
           $('vue-planning').hidden = true; $('lien-texte').textContent = e.message; $('vue-lien').hidden = false;
           return;
         }
@@ -447,6 +464,24 @@ textarea{min-height:64px;resize:vertical}
         if (!D) { $('vue-lien').hidden = false; $('lien-texte').textContent = 'Chargement impossible : ' + e.message; return; }
         $('alerte').textContent = 'Mise à jour impossible : ' + e.message; $('alerte').hidden = false;
       });
+  }
+
+  function saisieOuverte() { return $('fiche').open || $('dlg-bon').open || $('dlg-journee').open; }
+  /** Le lundi demandé est-il couvert par les données reçues ? (sans fenêtre : seule la semaine reçue) */
+  function dansFenetre(lundi) {
+    if (!D) return false;
+    return D.fenetre ? (lundi >= D.fenetre.du && decaler(lundi, 6) <= D.fenetre.au) : lundi === D.lundi;
+  }
+  function lundiDe(iso) { var d = dateObj(iso); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return isoDe(d); }
+  function garder() {
+    try { if (D) localStorage.setItem(CLE_D, JSON.stringify({ jeton: JETON, d: D })); } catch (e) {}
+  }
+  function reprendre() {
+    try {
+      var x = JSON.parse(localStorage.getItem(CLE_D) || 'null');
+      if (x && x.jeton === JETON && x.d && x.d.missions && x.d.chauffeurs && x.d.fenetre) return x.d;
+    } catch (e) {}
+    return null;
   }
 
   // ------------------------------------------------------------ Dessin du planning
@@ -526,7 +561,13 @@ textarea{min-height:64px;resize:vertical}
     $('semaine').textContent = 'Semaine ' + numSemaine(lundi) + ' : '
       + dateObj(lundi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' au ' + moisLong(dim);
 
-    var lignes = [{ code: '', nom: 'Non affecté', note: 'chauffeur à choisir' }].concat(D.chauffeurs.map(function (c) {
+    // Chauffeurs inactifs : seulement s'ils ont encore une mission en attente, ou une mission ou un bon cette semaine
+    var cetteSemaine = function (j) { return j >= lundi && j <= dim; };
+    var affiches = D.chauffeurs.filter(function (c) {
+      return c.actif || D.missions.some(function (m) { return m.chauffeur === c.code && (!m.datePrevue || cetteSemaine(m.datePrevue)); })
+        || (D.bonsLibres || []).some(function (b) { return b.chauffeur === c.code && cetteSemaine(b.date); });
+    });
+    var lignes = [{ code: '', nom: 'Non affecté', note: 'chauffeur à choisir' }].concat(affiches.map(function (c) {
       return { code: c.code, nom: c.nom, note: c.actif ? '' : 'inactif' };
     }));
     var connus = {}; lignes.forEach(function (l) { connus[l.code] = true; });
@@ -575,7 +616,7 @@ textarea{min-height:64px;resize:vertical}
     occupe++; etat('Enregistrement…');
     return appel('bureauEnregistrerMission', { mission: m })
       .then(function (r) {
-        occupe--;
+        (occupe--, finEnreg = Date.now());
         var i = D.missions.indexOf(missionParId(r.id) || {});
         if (i >= 0) D.missions[i] = r; else D.missions.push(r);
         (r.ajoutees || []).forEach(function (x) { D.missions.push(x); });
@@ -584,7 +625,7 @@ textarea{min-height:64px;resize:vertical}
         return r;
       })
       .catch(function (e) {
-        occupe--;
+        (occupe--, finEnreg = Date.now());
         if (ancienne) { var i = D.missions.indexOf(missionParId(ancienne.id)); if (i >= 0) D.missions[i] = ancienne; dessiner(); }
         toast(e.message, true);
         if (/modifiée entre-temps|ne peut plus être modifiée|introuvable/.test(e.message)) charger(true);
@@ -852,7 +893,7 @@ textarea{min-height:64px;resize:vertical}
         avertirSiMasquee(r);
         if (r.datePrevue && (r.datePrevue < D.lundi || r.datePrevue > decaler(D.lundi, 6))) {
           toast('Mission ' + r.id + ' planifiée le ' + court(r.datePrevue) + ' : hors de la semaine affichée.');
-          D.missions = D.missions.filter(function (x) { return x.id !== r.id; }); dessiner();
+          if (!dansFenetre(lundiDe(r.datePrevue))) { D.missions = D.missions.filter(function (x) { return x.id !== r.id; }); dessiner(); }
         }
       })
       .catch(function (err) { $('f-enregistrer').disabled = false; erreurFiche(err.message); });
@@ -1024,8 +1065,8 @@ textarea{min-height:64px;resize:vertical}
     }
     $('b-enregistrer').disabled = true; occupe++;
     appel('bureauSaisirBon', { bon: bon })
-      .then(function (r) { occupe--; $('dlg-bon').close(); toast('Bon ' + r.numero + ' enregistré'); return charger(true); })
-      .catch(function (err) { occupe--; $('b-enregistrer').disabled = false; erreurBon(err.message); });
+      .then(function (r) { (occupe--, finEnreg = Date.now()); $('dlg-bon').close(); toast('Bon ' + r.numero + ' enregistré'); return charger(true); })
+      .catch(function (err) { (occupe--, finEnreg = Date.now()); $('b-enregistrer').disabled = false; erreurBon(err.message); });
   });
   $('f-saisir-bon').onclick = function () { var m = enCours; $('fiche').close(); ouvrirBon(m); };
   $('nouveau-bon').onclick = function () { if (D) ouvrirBon(null); };
@@ -1056,13 +1097,13 @@ textarea{min-height:64px;resize:vertical}
     $('j-enregistrer').disabled = true; occupe++;
     appel('bureauEnregistrerJournee', { journee: { chauffeur: o.chauffeur, du: o.du, au: au, absent: absentJ, note: note } })
       .then(function (r) {
-        occupe--; $('dlg-journee').close();
+        (occupe--, finEnreg = Date.now()); $('dlg-journee').close();
         var t = (absentJ || note ? 'Enregistré' : 'Effacé') + (r.jours > 1 ? ' sur ' + r.jours + ' jours' : '');
         if (r.missionsPrevues.length) t += '. À replanifier : ' + r.missionsPrevues.join(', ');
         toast(t, r.missionsPrevues.length > 0);
         return charger(true);
       })
-      .catch(function (err) { occupe--; $('j-enregistrer').disabled = false; $('j-erreur').textContent = err.message; $('j-erreur').hidden = false; });
+      .catch(function (err) { (occupe--, finEnreg = Date.now()); $('j-enregistrer').disabled = false; $('j-erreur').textContent = err.message; $('j-erreur').hidden = false; });
   }
   $('form-journee').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -1083,19 +1124,43 @@ textarea{min-height:64px;resize:vertical}
   };
 
   // ------------------------------------------------------------ Barre du haut
-  function semaine(n) { if (D) { debut = decaler(D.lundi, n); charger(false); } }
+  /**
+   * Changement de semaine (v0.22) : si les données reçues couvrent la semaine voulue, elle s'affiche tout de
+   * suite et la mise à jour suit en arrière-plan ; sinon on attend le serveur comme avant.
+   */
+  function allerA(lundi) {
+    if (!D) return;
+    debut = lundi;
+    if (dansFenetre(lundi)) { D.lundi = lundi; dessiner(); charger(true); }
+    else charger(false);
+  }
+  function semaine(n) { if (D) allerA(decaler(D.lundi, n)); }
   $('prec').onclick = function () { semaine(-7); };
   $('suiv').onclick = function () { semaine(7); };
-  $('cette').onclick = function () { debut = ''; charger(false); };
+  $('cette').onclick = function () { if (D) allerA(lundiDe(isoDe(new Date()))); else { debut = ''; charger(false); } };
   $('actualiser').onclick = function () { charger(true); };
   $('nouvelle').onclick = function () { if (D) ouvrirFiche(null); };
 
   // Mise à jour automatique toutes les 2 minutes (bons reçus, missions faites), sauf pendant une saisie
   setInterval(function () {
-    if (D && !occupe && !glisse && !$('fiche').open && !$('dlg-bon').open && !$('dlg-journee').open && document.visibilityState === 'visible') charger(true);
+    if (D && !occupe && !glisse && !saisieOuverte() && document.visibilityState === 'visible') charger(true);
   }, 120000);
 
-  charger(false);
+  // Ouverture (v0.22) : le dernier planning reçu s'affiche tout de suite, la mise à jour suit
+  var enMemoire = JETON ? reprendre() : null;
+  var lundiCourant = lundiDe(isoDe(new Date()));
+  if (enMemoire) {
+    D = enMemoire;
+    D.aujourdhui = isoDe(new Date());
+    if (dansFenetre(lundiCourant)) {
+      D.lundi = lundiCourant; debut = lundiCourant;
+      $('chargement').hidden = true; $('vue-planning').hidden = false;
+      dessiner();
+      charger(true);
+    } else { D = null; charger(false); }
+  } else {
+    charger(false);
+  }
 })();
 </script>
 </body>
