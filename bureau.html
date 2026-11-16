@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.23 – 2026-11-16 (rotations demandées dans la mission, volume des rotations sur le bon, client par défaut des prestations) ; 0.22 – 2026-11-15 (rapidité) -->
+<!-- ETA Oillic – bureau.html – Version 0.23.1 – 2026-11-16 (absence ou note affichée dès l'enregistrement) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -665,10 +665,13 @@ textarea{min-height:64px;resize:vertical}
     e.dataTransfer.setData('text/plain', glisse);
     setTimeout(function () { c.classList.add('glisse'); }, 0);
   });
-  grille.addEventListener('dragend', function () {
+  // Fin du glissement : écoutée sur tout le document, car la carte déplacée est souvent déjà retirée de la grille
+  // (planning redessiné au dépôt) et son « dragend » ne remonte plus jusqu'à elle (v0.23.1)
+  function finGlisse() {
     glisse = null;
     Array.prototype.forEach.call(grille.querySelectorAll('.survol,.glisse,.interdit'), function (x) { x.classList.remove('survol', 'glisse', 'interdit'); });
-  });
+  }
+  document.addEventListener('dragend', finGlisse, true);
   grille.addEventListener('dragover', function (e) {
     var cs = e.target.closest('.case'); if (!cs || !glisse) return;
     e.preventDefault(); e.dataTransfer.dropEffect = 'move';
@@ -682,7 +685,7 @@ textarea{min-height:64px;resize:vertical}
     var cs = e.target.closest('.case'); if (!cs) return;
     e.preventDefault();
     var id = e.dataTransfer.getData('text/plain') || glisse;
-    cs.classList.remove('survol', 'interdit');
+    finGlisse(); // sinon les mises à jour du planning restaient bloquées après un déplacement (v0.23.1)
     if (id) deplacer(id, cs.getAttribute('data-chauffeur'), cs.getAttribute('data-date'));
   });
   grille.addEventListener('click', function (e) {
@@ -1100,6 +1103,15 @@ textarea{min-height:64px;resize:vertical}
     appel('bureauEnregistrerJournee', { journee: { chauffeur: o.chauffeur, du: o.du, au: au, absent: absentJ, note: note } })
       .then(function (r) {
         (occupe--, finEnreg = Date.now()); $('dlg-journee').close();
+        // Affichage tout de suite (v0.23.1), sans attendre le rechargement du planning
+        if (D) {
+          D.journees = D.journees || {};
+          for (var j = o.du; j <= au; j = decaler(j, 1)) {
+            var k = o.chauffeur + '|' + j;
+            if (absentJ || note) D.journees[k] = { absent: absentJ, note: note }; else delete D.journees[k];
+          }
+          garder(); dessiner();
+        }
         var t = (absentJ || note ? 'Enregistré' : 'Effacé') + (r.jours > 1 ? ' sur ' + r.jours + ' jours' : '');
         if (r.missionsPrevues.length) t += '. À replanifier : ' + r.missionsPrevues.join(', ');
         toast(t, r.missionsPrevues.length > 0);
