@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – index.html – Version 0.22 – 2026-11-15 (rapidité : dernières données affichées dès l'ouverture, chronomètre et envoi du bon sans attente) -->
+<!-- ETA Oillic – index.html – Version 0.23 – 2026-11-16 (rotations : volume de chaque rotation, client par défaut des prestations) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -434,7 +434,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
           + '<span class="quand"><b>' + esc(etiquette) + '</b>' + (precision ? '<small>' + esc(precision) + '</small>' : '') + '</span>'
           + '<span class="quoi"><b>' + esc(m.clientNom) + '</b>'
           + '<span class="detail">' + esc(m.prestationLibelle) + (m.lieu ? ', ' + esc(m.lieu) : '') + '</span>'
-          + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues ? '<span class="detail">' + esc(Precisions.resume(m.plages, m.preneurs, bouesMission(m))) + '</span>' : '')
+          + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues || m.rotationsDemandees ? '<span class="detail">' + esc(Precisions.resume(m.plages, m.preneurs, bouesMission(m), { demandees: m.rotationsDemandees })) + '</span>' : '')
           + (m.consignes ? '<span class="consigne">' + esc(m.consignes) + '</span>' : '')
           + (m.equipe && m.equipe.length ? '<span class="consigne">Équipe : ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + '</span>' : '')
           + (m.chrono ? '<span class="chrono ' + classeChrono(m.chrono) + '">' + esc(texteChrono(m.chrono)) + '</span>' : '')
@@ -469,7 +469,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     $('rappel').hidden = !m;
     if (m) {
       $('rappel').innerHTML = '<b>' + esc(m.clientNom) + '</b><br>' + esc(m.prestationLibelle)
-        + (m.lieu ? ', ' + esc(m.lieu) : '') + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues ? '<br>' + esc(Precisions.resume(m.plages, m.preneurs, bouesMission(m))) : '')
+        + (m.lieu ? ', ' + esc(m.lieu) : '') + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues || m.rotationsDemandees ? '<br>' + esc(Precisions.resume(m.plages, m.preneurs, bouesMission(m), { demandees: m.rotationsDemandees })) : '')
         + (m.consignes ? '<br>' + esc(m.consignes) : '')
         + (m.equipe && m.equipe.length ? '<br>Avec ' + esc(m.equipe.map(function (x) { return x.nom + ' (' + x.prestation + ')'; }).join(', ')) + ' : chacun fait son bon.' : '')
         + (m.prescription && !m.valideAvantLe ? '<br><b>Traitement : vérifiez la prescription du bureau, puis validez-la avant de démarrer.</b>' : '');
@@ -489,7 +489,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     if (pr && pr.valideAvantLe) $('f-client').disabled = true;
     $('parcelles-erreur').textContent = D.parcelles.erreur || '';
     $('parcelles-erreur').hidden = !D.parcelles.erreur;
-    blocPrec.remplir(m ? { plages: m.plages, preneurs: m.preneurs, station: m.station, preneurBoues: m.preneurBoues } : null); // prévus par le bureau
+    blocPrec.remplir(m ? { plages: m.plages, preneurs: m.preneurs, station: m.station, preneurBoues: m.preneurBoues, rotationsDemandees: m.rotationsDemandees } : null); // prévus par le bureau
     $('lignes').innerHTML = '';
     ajouterLigne(m ? m.prestation : '');
     if (pr) $('lignes').querySelector('.ligne')._opt.cocherPhyto(); // prescription : l'option phyto de la prestation est cochée
@@ -822,7 +822,8 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       remarques: $('f-remarques').value.trim(),
       plages: blocPrec.lire().plages,
       preneurs: blocPrec.lire().preneurs,
-      boues: blocPrec.lire().boues
+      boues: blocPrec.lire().boues,
+      rotations: blocPrec.lire().rotations
     };
   }
 

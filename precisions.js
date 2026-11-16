@@ -1,6 +1,8 @@
 /**
- * ETA Oillic – précisions demandées par certaines prestations (collecte des algues, épandage de boues)
- * Version 1.1 – 2026-11-13 : précision « boues » (station de provenance, preneur, parcelles et volume) ; 1.0 – 2026-11-03
+ * ETA Oillic – précisions demandées par certaines prestations (collecte des algues, épandage de boues, rotations)
+ * Version 1.2 – 2026-11-16 : précision « rotations » (rotations demandées dans la mission, volume de chaque rotation
+ *   sur le bon, total proposé comme quantité) et client par défaut des prestations ;
+ *   1.1 – 2026-11-13 : précision « boues » (station de provenance, preneur, parcelles et volume) ; 1.0 – 2026-11-03
  *
  * Prestations → « Précisions » : plage (plages du client, cases à cocher), remorques (preneurs et nombre
  * de remorques chez chacun), preneur (preneurs sans nombre). Le bloc n'apparaît que si une prestation du bon
@@ -9,6 +11,11 @@
  *   preneur choisi dans la liste (Paramètres → « Preneurs boues ») ; sur le bon, parcelles avec volume (m³ ou t)
  *   — preneur = SARL : parcelles du référentiel et surface obligatoire ; sinon nom libre, surface facultative.
  *   Le volume total est proposé comme quantité des prestations « boues » qui ne sont pas à l'heure (ex. épandeur, t).
+ * Rotations (1.2) : mission = nombre de rotations demandées (facultatif) ; bon = une ligne par rotation avec son volume
+ *   (m³), « Ajouter une rotation » reprend le volume de la précédente ; le total est proposé comme quantité des
+ *   prestations « rotations » qui ne sont pas à l'heure (ex. transfert de boues facturé au m³).
+ * Client par défaut (1.2) : une prestation qui a un client par défaut (Prestations → « Client par défaut ») le
+ *   propose dès qu'elle est choisie, si aucun client ne l'est encore (comme « Client boues » pour les boues).
  * Utilisé par index.html (téléphone), bureau.html (mission et saisie de bon) et gestion.html (correction).
  *
  * Precisions.monter(conteneur, {
@@ -17,7 +24,7 @@
  *   cadre                         : élément à masquer quand rien n'est demandé (par défaut le conteneur)
  *   bouton                        : classe du bouton « Ajouter un preneur »
  *   preneursBoues(), codeSarl(), parcellesSarl(), clientBoues() : listes et codes pour les boues
- *   choisirClient(code)           : place le client proposé pour les boues (si aucun client n'est choisi)
+ *   choisirClient(code)           : place le client proposé (boues, client par défaut d'une prestation) si aucun client n'est choisi
  *   lignes()                      : conteneur des lignes de prestations (quantité proposée = volume total)
  * }) → { maj(client, codes), lire(), remplir(v), verifier(), besoins() }
  */
@@ -43,6 +50,9 @@
       + '.pr-retirer{background:none;border:0;color:var(--rouge,#A8231B);text-decoration:underline;padding:4px 2px;font-size:inherit;cursor:pointer}'
       + '.pr-boues{margin:0 0 8px}.pr-champ{display:block;margin:0 0 10px;font-weight:700}.pr-champ select{display:block;width:100%;margin-top:4px}'
       + '.pr-info{margin:0 0 8px;color:var(--doux,#53636F)}.pr-parc{margin-top:4px}'
+      + '.pr-rot{display:flex;align-items:center;gap:8px;margin:0 0 8px}.pr-rot .pr-rot-n{min-width:90px}'
+      + '.pr-rot input{max-width:110px;margin:0}.pr-rot-total{font-weight:700;margin:4px 0 10px}.pr-rot-total.ecart{color:var(--rouge,#A8231B)}'
+      + '.pr-champ input{display:block;max-width:160px;margin-top:4px}'
       + '@media (max-width:520px){.pr-preneur.avec{grid-template-columns:1fr auto}.pr-preneur.avec .pr-nb{grid-column:1}}';
     document.head.appendChild(s);
   }
@@ -53,11 +63,14 @@
     var mission = o.mode === 'mission';
     var id = 'pr-liste-' + (++n);
     var cadre = o.cadre || el;
-    var besoin = { plage: false, remorques: false, preneur: false, boues: false };
+    var besoin = { plage: false, remorques: false, preneur: false, boues: false, rotations: false };
     var client = null;
     var plagesCochees = [];          // plages choisies (gardées quand la liste est redessinée)
     var preneurs = [];               // [{ nom, remorques }]
     var station = '', preneurBoues = ''; // boues : station de provenance, preneur (code client)
+    var rotations = [];              // rotations du bon : volumes saisis (texte)
+    var rotDemandees = '';           // rotations demandées (mission ; sur le bon : rappel de la mission)
+    var codesVus = [];               // prestations déjà vues (le client par défaut n'est proposé qu'à l'arrivée d'une prestation)
     var titreCadre = cadre !== el ? cadre.querySelector('legend, h4') : null, titreOrigine = titreCadre ? titreCadre.textContent : '';
 
     // Zone redessinée (plages, preneurs, station et preneur des boues) ; parcelles des boues gardées à part
@@ -82,9 +95,20 @@
     }
     /** Volume total proposé comme quantité des prestations « boues » non horaires (vide, ou valeur déjà proposée). */
     function proposerQuantite() {
-      var cont = o.lignes && o.lignes(), liste = listeBoues();
-      if (!cont || !liste || !besoin.boues) return;
-      var total = liste.volumeTotal();
+      var liste = listeBoues();
+      if (!liste || !besoin.boues) return;
+      proposerPour('boues', liste.volumeTotal());
+    }
+    function nombreTxt(x) { var v = Number(String(x).replace(/\s/g, '').replace(',', '.')); return String(x).trim() !== '' && isFinite(v) ? v : NaN; }
+    function totalRotations() {
+      return Math.round(rotations.reduce(function (t, x) { var v = nombreTxt(x); return t + (v > 0 ? v : 0); }, 0) * 100) / 100;
+    }
+    function nbRotations() { return rotations.filter(function (x) { return nombreTxt(x) > 0; }).length; }
+    /** Total des rotations proposé comme quantité des prestations « rotations » non horaires (ex. m³). */
+    function proposerRotations() { if (besoin.rotations && !mission) proposerPour('rotations', totalRotations()); }
+    function proposerPour(cle, total) {
+      var cont = o.lignes && o.lignes();
+      if (!cont) return;
       if (!(total > 0)) return;
       var ps = (o.prestations && o.prestations()) || [];
       Array.prototype.forEach.call(cont.children, function (l) {
@@ -92,11 +116,12 @@
         var sel = l.querySelector('select'), c = l._opt.code() || (sel ? sel.value : '');
         var p = ps.filter(function (x) { return x.code === c || (x.variantes || []).indexOf(c) >= 0; })[0];
         var q = l.querySelector('.l-qte, .e-qte');
-        if (!p || !q || (p.precisions || []).indexOf('boues') < 0) return;
+        if (!p || !q || (p.precisions || []).indexOf(cle) < 0) return;
         var u = (ps.filter(function (x) { return x.code === c; })[0] || p).unite || '';
         if (/^h(eures?)?$/i.test(String(u).trim())) return;
-        if (q.value.trim() !== '' && q.value.trim() !== l._qBoues) return;
-        q.value = l._qBoues = String(total).replace('.', ',');
+        var k = '_q_' + cle;
+        if (q.value.trim() !== '' && q.value.trim() !== l[k]) return;
+        q.value = l[k] = String(total).replace('.', ',');
         q.dispatchEvent(new Event('input', { bubbles: true }));
       });
     }
@@ -116,6 +141,23 @@
       var st = zone.querySelector('.pr-station'), pb = zone.querySelector('.pr-preneur-boues');
       if (st) station = st.value;
       if (pb) preneurBoues = pb.value;
+      if (zone.querySelector('.pr-rotations')) {
+        rotations = Array.prototype.map.call(zone.querySelectorAll('.pr-rot-v'), function (i) { return i.value.trim(); });
+      }
+      var rd = zone.querySelector('.pr-rot-dem');
+      if (rd) rotDemandees = rd.value.trim();
+    }
+    /** Ligne « 2 rotations, 24 m³ (sur 6 demandées) » sous la liste des rotations. */
+    function texteTotal() {
+      var n = nbRotations(), t = totalRotations(), d = nombreTxt(rotDemandees);
+      return n + ' rotation' + (n > 1 ? 's' : '') + ', ' + String(t).replace('.', ',') + ' m³'
+        + (d > 0 ? ' (' + d + ' demandée' + (d > 1 ? 's' : '') + ')' : '');
+    }
+    function majTotal() {
+      var el2 = zone.querySelector('.pr-rot-total'); if (!el2) return;
+      var d = nombreTxt(rotDemandees);
+      el2.textContent = 'Total : ' + texteTotal();
+      el2.className = 'pr-rot-total' + (d > 0 && nbRotations() !== d ? ' ecart' : '');
     }
     function plagesClient() { return (client && client.plages) || []; }
     function stationsClient() { return (client && client.stations) || []; }
@@ -161,10 +203,31 @@
           + (!mission && bouesSarl() ? '<p class="pr-info">Parcelles de la SARL : le bon sera envoyé à l\'exploitation (Gestion → Trois Étangs).</p>' : '')
           + '</div>';
       }
+      if (besoin.rotations) {
+        if (mission) {
+          h += '<div class="pr-rotations-m"><label class="pr-champ">Nombre de rotations demandées <small>(facultatif)</small>'
+            + '<input type="text" class="pr-rot-dem" inputmode="numeric" autocomplete="off" maxlength="4" value="' + esc(rotDemandees) + '"></label></div>';
+        } else {
+          if (!rotations.length) rotations = [''];
+          var d = nombreTxt(rotDemandees);
+          h += '<div class="pr-rotations"><div class="pr-titre">Rotations et volume de chacune (m³)'
+            + (d > 0 ? ' <small>– ' + d + ' rotation' + (d > 1 ? 's' : '') + ' demandée' + (d > 1 ? 's' : '') + '</small>' : '') + '</div>'
+            + rotations.map(function (v, i) {
+              return '<div class="pr-rot"><span class="pr-rot-n">Rotation ' + (i + 1) + '</span>'
+                + '<input type="text" class="pr-rot-v" inputmode="decimal" autocomplete="off" placeholder="m³" aria-label="Volume de la rotation ' + (i + 1) + ' en m³" value="' + esc(v) + '"> m³'
+                + '<button type="button" class="pr-retirer pr-rot-retirer"' + (rotations.length === 1 ? ' hidden' : '') + '>Retirer</button></div>';
+            }).join('')
+            + '<p class="pr-rot-total"></p>'
+            + '<button type="button" class="' + esc(o.bouton || 'secondaire') + ' pr-rot-ajout">Ajouter une rotation</button></div>';
+        }
+      }
       zone.innerHTML = h;
       cadre.hidden = !h;
-      // Titre du cadre (legend ou h4) : « Épandage de boues » quand seules les boues sont demandées
-      if (titreCadre) titreCadre.textContent = besoin.boues && !besoin.plage && !besoin.remorques && !besoin.preneur ? 'Épandage de boues' : titreOrigine;
+      majTotal();
+      // Titre du cadre (legend ou h4) : « Épandage de boues » / « Rotations » quand seule cette précision est demandée
+      var seul = !besoin.plage && !besoin.remorques && !besoin.preneur;
+      if (titreCadre) titreCadre.textContent = seul && besoin.boues && !besoin.rotations ? 'Épandage de boues'
+        : seul && besoin.rotations && !besoin.boues ? 'Rotations' : titreOrigine;
       majParc();
       var lignes = zone.querySelectorAll('.pr-preneur');
       Array.prototype.forEach.call(lignes, function (d) { d.querySelector('.pr-retirer').hidden = lignes.length === 1; });
@@ -174,10 +237,35 @@
       if (e.target.classList.contains('pr-ajout')) {
         lireEcran(); preneurs.push({ nom: '', remorques: '' }); dessiner();
         var l = zone.querySelectorAll('.pr-nom'); l[l.length - 1].focus();
+      } else if (e.target.classList.contains('pr-rot-ajout')) {
+        lireEcran();
+        rotations.push(rotations.length ? rotations[rotations.length - 1] : ''); // même volume que la rotation précédente
+        dessiner(); proposerRotations();
+        var r = zone.querySelectorAll('.pr-rot-v'); r[r.length - 1].focus(); r[r.length - 1].select();
+        signaler();
+      } else if (e.target.classList.contains('pr-rot-retirer')) {
+        e.target.closest('.pr-rot').remove(); lireEcran(); dessiner(); proposerRotations(); signaler();
       } else if (e.target.classList.contains('pr-retirer')) {
         e.target.closest('.pr-preneur').remove(); lireEcran(); dessiner();
       }
     });
+    zone.addEventListener('input', function (e) {
+      if (e.target.classList.contains('pr-rot-v') || e.target.classList.contains('pr-rot-dem')) { lireEcran(); majTotal(); proposerRotations(); }
+    });
+    /** Le formulaire de la page est prévenu d'une modification faite par un bouton (saisie en cours). */
+    function signaler() { try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (x) {} }
+    /** Client proposé pour une prestation : son client par défaut, sinon le client des boues (s'il est dans la liste). */
+    function clientPropose(c, ps) {
+      var cls = (o.clients && o.clients()) || [];
+      var existe = function (k) { return !!k && cls.some(function (x) { return x.code === k && x.actif !== false; }); };
+      var p = ps.filter(function (x) { return x.code === c; })[0];
+      var parent = ps.filter(function (x) { return (x.variantes || []).indexOf(c) >= 0; })[0];
+      var d = (p && p.clientDefaut) || (parent && parent.clientDefaut) || '';
+      if (existe(d)) return d;
+      var boues = [p, parent].some(function (x) { return x && (x.precisions || []).indexOf('boues') >= 0; });
+      var cb = boues && o.clientBoues ? o.clientBoues() : '';
+      return existe(cb) ? cb : '';
+    }
     zone.addEventListener('change', function (e) {
       if (e.target.classList.contains('pr-preneur-boues')) { lireEcran(); dessiner(); proposerQuantite(); }
     });
@@ -187,32 +275,46 @@
       maj: function (codeClient, codes) {
         lireEcran();
         var cl = ((o.clients && o.clients()) || []).filter(function (c) { return c.code === codeClient; })[0] || null;
-        var ps = (o.prestations && o.prestations()) || [], b = { plage: false, remorques: false, preneur: false, boues: false };
+        var ps = (o.prestations && o.prestations()) || [], b = { plage: false, remorques: false, preneur: false, boues: false, rotations: false };
         (codes || []).forEach(function (c) {
           ps.forEach(function (p) {
             if (p.code === c || (p.variantes || []).indexOf(c) >= 0) (p.precisions || []).forEach(function (k) { b[k] = true; });
           });
         });
-        // Boues : client proposé d'office (SAUR) quand aucun client n'est encore choisi
-        var proposer = b.boues && !besoin.boues && !codeClient && o.choisirClient && o.clientBoues && o.clientBoues();
+        // Client proposé d'office (client par défaut de la prestation, ou SAUR pour les boues) quand une prestation
+        // vient d'être choisie et qu'aucun client ne l'est encore
+        var nouveaux = (codes || []).filter(function (c) { return c && codesVus.indexOf(c) < 0; });
+        codesVus = (codes || []).slice();
+        var proposer = '';
+        if (!codeClient && o.choisirClient) nouveaux.some(function (c) { proposer = clientPropose(c, ps); return !!proposer; });
         // Client changé : les plages cochées et la station qui ne sont pas les siennes sont retirées
         if (cl !== client && client) {
           plagesCochees = plagesCochees.filter(function (p) { return ((cl && cl.plages) || []).indexOf(p) >= 0; });
           if (station && ((cl && cl.stations) || []).indexOf(station) < 0) station = '';
         }
-        if (b.plage === besoin.plage && b.remorques === besoin.remorques && b.preneur === besoin.preneur && b.boues === besoin.boues && cl === client) return;
+        if (b.plage === besoin.plage && b.remorques === besoin.remorques && b.preneur === besoin.preneur && b.boues === besoin.boues
+          && b.rotations === besoin.rotations && cl === client) {
+          if (proposer) o.choisirClient(proposer);
+          return;
+        }
         besoin = b; client = cl;
         dessiner();
         if (b.boues) proposerQuantite();
-        if (proposer) o.choisirClient(o.clientBoues());
+        if (b.rotations) proposerRotations();
+        if (proposer) o.choisirClient(proposer);
       },
       /**
-       * { plages: [...], preneurs: [{ nom, remorques }], boues: { station, preneur, parcelles } }
-       * (mission : preneurs = noms seuls ; boues sans parcelles).
+       * { plages: [...], preneurs: [{ nom, remorques }], boues: { station, preneur, parcelles }, rotations: [volumes], rotationsDemandees }
+       * (mission : preneurs = noms seuls ; boues sans parcelles ; rotations demandées seulement).
        */
       lire: function () {
         lireEcran();
-        var r = { plages: besoin.plage ? plagesCochees.slice() : [], preneurs: [], boues: { station: '', preneur: '', parcelles: [] } };
+        var r = { plages: besoin.plage ? plagesCochees.slice() : [], preneurs: [], boues: { station: '', preneur: '', parcelles: [] },
+          rotations: [], rotationsDemandees: '' };
+        if (besoin.rotations) {
+          if (mission) r.rotationsDemandees = rotDemandees;
+          else r.rotations = rotations.filter(function (x) { return x !== ''; });
+        }
         if (besoin.remorques || besoin.preneur) {
           r.preneurs = preneurs.filter(function (x) { return x.nom || x.remorques; })
             .map(function (x) { return mission ? x.nom : { nom: x.nom, remorques: besoin.remorques ? x.remorques : '' }; });
@@ -224,14 +326,17 @@
         return r;
       },
       /**
-       * v = { plages: [...], preneurs: [{ nom, remorques }] ou [noms], station, preneurBoues, parcellesBoues: [{ code, nom, surface, volume }] } ;
-       * null pour vider.
+       * v = { plages: [...], preneurs: [{ nom, remorques }] ou [noms], station, preneurBoues, parcellesBoues: [{ code, nom, surface, volume }],
+       *   rotations: [volumes], rotationsDemandees } ; null pour vider.
        */
       remplir: function (v) {
         v = v || {};
         plagesCochees = (v.plages || []).slice();
         preneurs = (v.preneurs || []).map(function (x) { return typeof x === 'string' ? { nom: x, remorques: '' } : { nom: x.nom || '', remorques: x.remorques === '' || x.remorques == null ? '' : String(x.remorques) }; });
         station = v.station || ''; preneurBoues = v.preneurBoues || '';
+        rotations = (v.rotations || []).map(function (x) { return String(x).replace('.', ','); });
+        rotDemandees = v.rotationsDemandees === '' || v.rotationsDemandees == null ? '' : String(v.rotationsDemandees);
+        codesVus = [];
         client = null; // le client est redonné par maj() : rien n'est filtré d'après le client précédent
         if (listeSarl) {
           var pc = v.parcellesBoues && v.parcellesBoues.length ? v.parcellesBoues : null;
@@ -262,9 +367,15 @@
           var e = listeBoues() ? listeBoues().verifier(bouesSarl()) : '';
           if (e) return 'Boues – ' + e.charAt(0).toLowerCase() + e.slice(1);
         }
+        if (besoin.rotations) {
+          if (!r.rotations.length) return 'Rotations : indiquez le volume de chaque rotation (m³).';
+          for (var j = 0; j < rotations.length; j++) {
+            if (!(nombreTxt(rotations[j]) > 0)) return 'Rotation ' + (j + 1) + ' : indiquez le volume en m³ (ou retirez la ligne).';
+          }
+        }
         return '';
       },
-      besoins: function () { return { plage: besoin.plage, remorques: besoin.remorques, preneur: besoin.preneur, boues: besoin.boues }; },
+      besoins: function () { return { plage: besoin.plage, remorques: besoin.remorques, preneur: besoin.preneur, boues: besoin.boues, rotations: besoin.rotations }; },
       /** Liste des parcelles SARL chargée après coup : rafraîchit les choix. */
       rafraichirCodes: function () { if (listeSarl) listeSarl.rafraichirCodes(); }
     };
@@ -272,16 +383,25 @@
 
   /**
    * Texte court pour les listes : « Penvins, Kerfontaine – Dupont (3 remorques), Martin (1 remorque) » ;
-   * boues = { station, preneurNom, volume } : « boues Theix – Le Saindo → Launay Didier, 54 m³ ».
+   * boues = { station, preneurNom, volume } : « boues Theix – Le Saindo → Launay Didier, 54 m³ » ;
+   * rot = { demandees, volumes } : « 6 rotations demandées » (mission) ou « 3 rotations, 36 m³ » (bon).
    */
-  function resume(plages, preneurs, boues) {
+  function resume(plages, preneurs, boues, rot) {
     var p = (preneurs || []).map(function (x) {
       if (typeof x === 'string') return x;
       return x.nom + (x.remorques ? ' (' + x.remorques + ' remorque' + (x.remorques > 1 ? 's' : '') + ')' : '');
     });
     var b = boues && (boues.station || boues.preneurNom) ? 'boues ' + [boues.station, boues.preneurNom ? '→ ' + boues.preneurNom : ''].filter(Boolean).join(' ')
       + (boues.volume !== '' && boues.volume != null ? ', ' + String(boues.volume).replace('.', ',') + ' m³' : '') : '';
-    return [(plages || []).join(', '), p.length ? 'preneur' + (p.length > 1 ? 's' : '') + ' : ' + p.join(', ') : '', b].filter(Boolean).join(' – ');
+    var r = '';
+    if (rot && (rot.volumes || []).length) {
+      var t = Math.round(rot.volumes.reduce(function (s, x) { return s + Number(x); }, 0) * 100) / 100;
+      r = rot.volumes.length + ' rotation' + (rot.volumes.length > 1 ? 's' : '') + ', ' + String(t).replace('.', ',') + ' m³'
+        + (rot.demandees ? ' (' + rot.demandees + ' demandée' + (rot.demandees > 1 ? 's' : '') + ')' : '');
+    } else if (rot && rot.demandees) {
+      r = rot.demandees + ' rotation' + (rot.demandees > 1 ? 's' : '') + ' demandée' + (rot.demandees > 1 ? 's' : '');
+    }
+    return [(plages || []).join(', '), p.length ? 'preneur' + (p.length > 1 ? 's' : '') + ' : ' + p.join(', ') : '', b, r].filter(Boolean).join(' – ');
   }
 
   window.Precisions = { monter: monter, resume: resume };

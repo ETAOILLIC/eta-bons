@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – gestion.html – Version 0.21 – 2026-11-13 (épandage de boues : stations des clients, précision « boues », correction des bons) -->
+<!-- ETA Oillic – gestion.html – Version 0.23 – 2026-11-16 (rotations : volume de chaque rotation, client par défaut des prestations) ; 0.21 – 2026-11-13 (épandage de boues) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -387,8 +387,10 @@ table.voir ul{margin:0;padding-left:18px}
       { cle: 'prec_plage', nom: 'Demande la ou les plages (choisies dans la liste des plages du client)', caseACocher: true, parDefaut: false },
       { cle: 'prec_remorques', nom: 'Demande les preneurs et le nombre de remorques envoyées chez chacun', caseACocher: true, parDefaut: false },
       { cle: 'prec_preneur', nom: 'Demande le preneur, sans nombre de remorques (ex. chez qui on épand)', caseACocher: true, parDefaut: false },
-      { cle: 'prec_boues', nom: 'Épandage de boues : demande la station, le preneur des boues, les parcelles et le volume de chacune', caseACocher: true, parDefaut: false }],
-      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['options', 'Options'], ['variantes', 'Variantes'], ['precisions', 'Précisions'], ['phyto', 'Phyto'], ['actif', 'Active']] },
+      { cle: 'prec_boues', nom: 'Épandage de boues : demande la station, le preneur des boues, les parcelles et le volume de chacune', caseACocher: true, parDefaut: false },
+      { cle: 'prec_rotations', nom: 'Rotations : demande le volume de chaque rotation (m³) ; nombre de rotations demandées dans la mission', caseACocher: true, parDefaut: false },
+      { cle: 'clientDefaut', nom: 'Client par défaut : code client proposé d\'office avec cette prestation (ex. GMVA), facultatif' }],
+      colonnes: [['code', 'Code EBP'], ['libelle', 'Libellé'], ['unite', 'Unité'], ['options', 'Options'], ['variantes', 'Variantes'], ['precisions', 'Précisions'], ['clientDefaut', 'Client par défaut'], ['phyto', 'Phyto'], ['actif', 'Active']] },
     chauffeur: { titre: 'Chauffeurs', un: 'chauffeur', champs: [
       { cle: 'code', nom: 'Code', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
       { cle: 'telephone', nom: 'Téléphone portable' },
@@ -449,7 +451,7 @@ table.voir ul{margin:0;padding-left:18px}
     return appel('gestionCharger', { annee: anneeHisto })
       .then(function (d) {
         occupe--; D = d; $('chargement').hidden = true; $('alerte').hidden = true;
-        D.prestations.forEach(function (p) { ['plage', 'remorques', 'preneur', 'boues'].forEach(function (k) { p['prec_' + k] = (p.precisions || []).indexOf(k) >= 0; }); });
+        D.prestations.forEach(function (p) { ['plage', 'remorques', 'preneur', 'boues', 'rotations'].forEach(function (k) { p['prec_' + k] = (p.precisions || []).indexOf(k) >= 0; }); });
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         afficher();
       })
@@ -539,7 +541,7 @@ table.voir ul{margin:0;padding-left:18px}
       + '</div><div class="bons"><h3>Détail des bons</h3><table class="liste"><thead><tr><th><input type="checkbox" data-tout="' + esc(code) + '"'
       + (coches.length === bons.length ? ' checked' : '') + ' aria-label="Tout cocher"></th><th>N° bon</th><th>Date</th><th>Chauffeur</th><th>Lieu / parcelle</th><th>Prestations</th><th class="nb">Heures</th><th>Remarques</th><th></th></tr></thead><tbody>'
       + bons.map(function (b) {
-          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : '', Precisions.resume(b.plages, b.preneurs, bouesBon(b))].filter(Boolean).join(', ');
+          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : '', Precisions.resume(b.plages, b.preneurs, bouesBon(b), { volumes: b.rotations })].filter(Boolean).join(', ');
           var intr = b.intrants.length ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
           return '<tr' + (decoches[b.numero] ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (decoches[b.numero] ? '' : ' checked') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
             + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + trombone(b) + '</td>'
@@ -691,7 +693,7 @@ table.voir ul{margin:0;padding-left:18px}
     $('b-lieu').value = b.lieu;
     parcellesSarl.remplir(b.parcelles);
     blocPrec.remplir({ plages: b.plages, preneurs: b.preneurs, station: b.station, preneurBoues: b.preneurBoues,
-      parcellesBoues: b.station || b.preneurBoues ? b.parcelles : null });
+      parcellesBoues: b.station || b.preneurBoues ? b.parcelles : null, rotations: b.rotations || [] });
     $('b-lignes').innerHTML = ''; LignesOptions.grouper(b.lignes, D.prestations).forEach(function (l) { ligneEd(l); }); if (!b.lignes.length) ligneEd({});
     $('b-intrants').innerHTML = ''; b.intrants.forEach(intrantEd);
     blocPhyto.remplir(b.phyto ? Object.assign({}, b.phyto, { parcelles: b.parcelles }) : null);
@@ -728,7 +730,8 @@ table.voir ul{margin:0;padding-left:18px}
       intrants: !sarl || estPhyto() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
       }),
-      plages: blocPrec.lire().plages, preneurs: blocPrec.lire().preneurs, boues: blocPrec.lire().boues
+      plages: blocPrec.lire().plages, preneurs: blocPrec.lire().preneurs, boues: blocPrec.lire().boues,
+      rotations: blocPrec.lire().rotations
     };
     if (!donnees.lignes.length) return erreurBon('Ajoutez au moins une prestation.');
     var ls = $('b-lignes').children;
@@ -804,6 +807,7 @@ table.voir ul{margin:0;padding-left:18px}
       ['Plages et preneurs', esc(Precisions.resume(b.plages, b.preneurs))],
       ['Épandage de boues', b.station || b.preneurBoues ? esc([b.station ? 'station ' + b.station : '', b.preneurBouesNom ? 'preneur ' + b.preneurBouesNom : '',
         b.volumeBoues !== '' && b.volumeBoues != null ? nb(b.volumeBoues) + ' m³ au total' : ''].filter(Boolean).join(', ')) : ''],
+      ['Rotations', (b.rotations || []).length ? esc(Precisions.resume([], [], null, { volumes: b.rotations })) + '<br><small>' + b.rotations.map(function (x, i) { return 'n° ' + (i + 1) + ' : ' + nb(x) + ' m³'; }).join(' · ') + '</small>' : ''],
       ['Prestations', resume(b.lignes)],
       ['Intrants', b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join('<br>')],
       ['Traitement phyto', phytoDetail(b.phyto)],
@@ -1089,6 +1093,7 @@ table.voir ul{margin:0;padding-left:18px}
       b.lignes.map(function (x) { return x.code + ' ' + x.libelle; }).join(' '),
       b.intrants.map(function (x) { return x.produit; }).join(' '),
       (b.plages || []).join(' '), (b.preneurs || []).map(function (x) { return x.nom; }).join(' '), b.station || '', b.preneurBouesNom || '',
+      (b.rotations || []).length ? 'rotations' : '',
       b.phyto ? b.phyto.culture + ' ' + b.phyto.produits.map(function (x) { return x.nom + ' ' + x.amm; }).join(' ') : ''].join(' ').toLowerCase();
   }
   function dessinerHistorique() {
@@ -1111,7 +1116,7 @@ table.voir ul{margin:0;padding-left:18px}
       + (nbF !== l.length ? ' (' + nbF + ' facturé' + (nbF > 1 ? 's' : '') + ', ' + (l.length - nbF) + ' annulé' + (l.length - nbF > 1 ? 's' : '') + ')' : '');
     $('histo').innerHTML = l.length ? l.map(function (b) {
       var intr = b.intrants.length && !b.phyto ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
-      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b), esc(Precisions.resume(b.plages, b.preneurs, bouesBon(b)))].filter(Boolean).join('<br>');
+      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b), esc(Precisions.resume(b.plages, b.preneurs, bouesBon(b), { volumes: b.rotations }))].filter(Boolean).join('<br>');
       var annule = b.statut === 'Annulé', motif = annule ? motifAnnulation(b) : '';
       return '<tr><td class="num">' + esc(b.numero)
         + (b.corrections.filter(function (x) { return x.element !== 'Statut'; }).length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '')
@@ -1222,7 +1227,7 @@ table.voir ul{margin:0;padding-left:18px}
       fiche[c.cle] = c.caseACocher ? i.checked : i.value.trim();
     });
     if (ficheOuverte.type === 'prestation') {
-      fiche.precisions = ['plage', 'remorques', 'preneur', 'boues'].filter(function (k) { return fiche['prec_' + k]; }).join(', ');
+      fiche.precisions = ['plage', 'remorques', 'preneur', 'boues', 'rotations'].filter(function (k) { return fiche['prec_' + k]; }).join(', ');
       if (fiche.prec_remorques && fiche.prec_preneur) { $('f-erreur').textContent = 'Précisions : cochez « preneurs et remorques » ou « preneur sans nombre », pas les deux.'; $('f-erreur').hidden = false; return; }
     }
     for (var k = 0; k < conf.champs.length; k++) {

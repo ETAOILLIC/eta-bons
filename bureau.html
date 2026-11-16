@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.22 – 2026-11-15 (rapidité : changement de semaine immédiat, planning affiché dès l'ouverture) -->
+<!-- ETA Oillic – bureau.html – Version 0.23 – 2026-11-16 (rotations demandées dans la mission, volume des rotations sur le bon, client par défaut des prestations) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -507,7 +507,7 @@ textarea{min-height:64px;resize:vertical}
       + '<b>' + esc(m.clientNom) + '</b>'
       + '<span class="presta">' + esc(m.prestationLibelle) + '</span>'
       + (m.lieu ? '<span class="lieu">' + esc(m.lieu) + '</span>' : '')
-      + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues ? '<span class="lieu">' + esc(Precisions.resume(m.plages, m.preneurs, { station: m.station, preneurNom: m.preneurBouesNom, volume: '' })) + '</span>' : '')
+      + ((m.plages || []).length || (m.preneurs || []).length || m.station || m.preneurBoues || m.rotationsDemandees ? '<span class="lieu">' + esc(Precisions.resume(m.plages, m.preneurs, { station: m.station, preneurNom: m.preneurBouesNom, volume: '' }, { demandees: m.rotationsDemandees })) + '</span>' : '')
       + (m.statut === 'Faite' ? '<span class="bon">' + esc(m.numeroBon) + trombone(m.numeroBon) + '</span>' : '')
       + (dates.length ? '<span class="dates">' + esc(dates.join(', ')) + '</span>' : '')
       + (m.equipe && m.equipe.length ? '<span class="dates">équipe de ' + (m.equipe.length + 1) + ' chauffeurs</span>' : '')
@@ -734,7 +734,7 @@ textarea{min-height:64px;resize:vertical}
     $('f-apartir').value = v.aPartirDu; $('f-auplustard').value = v.auPlusTard; $('f-jour').value = v.datePrevue;
     remplirPresc(m);
     remplirEquipe(m);
-    blocPrecM.remplir({ plages: v.plages, preneurs: v.preneurs, station: v.station, preneurBoues: v.preneurBoues });
+    blocPrecM.remplir({ plages: v.plages, preneurs: v.preneurs, station: v.station, preneurBoues: v.preneurBoues, rotationsDemandees: v.rotationsDemandees });
     majPrecMission();
     Array.prototype.forEach.call($('form-fiche').querySelectorAll('input,select,textarea'), function (x) { x.disabled = fige; });
     $('f-enregistrer').hidden = fige;
@@ -864,7 +864,8 @@ textarea{min-height:64px;resize:vertical}
       aPartirDu: $('f-apartir').value, auPlusTard: $('f-auplustard').value,
       datePrevue: $('f-jour').value, chauffeur: $('f-chauffeur').value,
       plages: blocPrecM.lire().plages, preneurs: blocPrecM.lire().preneurs,
-      station: blocPrecM.lire().boues.station, preneurBoues: blocPrecM.lire().boues.preneur
+      station: blocPrecM.lire().boues.station, preneurBoues: blocPrecM.lire().boues.preneur,
+      rotationsDemandees: blocPrecM.lire().rotationsDemandees
     };
     if (!m.client) return erreurFiche('Choisissez le client.');
     if (!m.prestation) return erreurFiche('Choisissez la prestation.');
@@ -1006,7 +1007,7 @@ textarea{min-height:64px;resize:vertical}
     $('b-client').innerHTML = optionsActives(D.clients, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
     $('b-client').value = m ? m.client : '';
     $('b-lieu').value = m ? m.lieu : '';
-    blocPrecB.remplir(m ? { plages: m.plages, preneurs: m.preneurs, station: m.station, preneurBoues: m.preneurBoues } : null);
+    blocPrecB.remplir(m ? { plages: m.plages, preneurs: m.preneurs, station: m.station, preneurBoues: m.preneurBoues, rotationsDemandees: m.rotationsDemandees } : null);
     $('b-lignes').innerHTML = ''; ligneBon(m ? m.prestation : '');
     $('b-intrants').innerHTML = '';
     var pr = m && m.prescription ? Object.assign({}, m.prescription, { conforme: m.conforme, demarches: m.demarches, valideAvantLe: m.valideAvantLe }) : null;
@@ -1043,7 +1044,8 @@ textarea{min-height:64px;resize:vertical}
       intrants: !sarl || estPhytoBon() ? [] : Array.prototype.map.call($('b-intrants').children, function (d) {
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
       }).filter(function (x) { return x.produit || x.dose || x.unite; }),
-      plages: blocPrecB.lire().plages, preneurs: blocPrecB.lire().preneurs, boues: blocPrecB.lire().boues
+      plages: blocPrecB.lire().plages, preneurs: blocPrecB.lire().preneurs, boues: blocPrecB.lire().boues,
+      rotations: blocPrecB.lire().rotations
     };
     if (!bon.chauffeur) return erreurBon('Choisissez le chauffeur qui a fait le travail.');
     if (!bon.date) return erreurBon("Indiquez la date de l'intervention.");
