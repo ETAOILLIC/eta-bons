@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.23.1 – 2026-11-16 (absence ou note affichée dès l'enregistrement) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
+<!-- ETA Oillic – bureau.html – Version 0.26 – 2026-11-17 (saisie d'un bon : nombre de rotations, pesées dans la Gestion) ; 0.23.1 (absences, glisser-déposer) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -1048,7 +1048,8 @@ textarea{min-height:64px;resize:vertical}
         return { produit: d.querySelector('.i-prod').value.trim(), dose: d.querySelector('.i-dose').value.trim(), unite: d.querySelector('.i-unite').value };
       }).filter(function (x) { return x.produit || x.dose || x.unite; }),
       plages: blocPrecB.lire().plages, preneurs: blocPrecB.lire().preneurs, boues: blocPrecB.lire().boues,
-      rotations: blocPrecB.lire().rotations
+      rotations: blocPrecB.lire().rotations,
+      nombreRotations: blocPrecB.lire().nombreRotations
     };
     if (!bon.chauffeur) return erreurBon('Choisissez le chauffeur qui a fait le travail.');
     if (!bon.date) return erreurBon("Indiquez la date de l'intervention.");
@@ -1059,7 +1060,7 @@ textarea{min-height:64px;resize:vertical}
     for (var i = 0; i < ls.length; i++) {
       if (!ls[i].querySelector('.e-code').value) return erreurBon('Prestation ' + (i + 1) + ' : choisissez la prestation.');
       var ev = ls[i]._opt.code() ? '' : ls[i]._opt.verifier(i + 1); if (ev) return erreurBon(ev);
-      if (!(nombre(ls[i].querySelector('.e-qte').value) > 0)) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
+      if (!(nombre(ls[i].querySelector('.e-qte').value) > 0) && !(ls[i].querySelector('.e-qte').value.trim() === '' && blocPrecB.quantiteLibre(ls[i]._opt.code() || ls[i].querySelector('.e-code').value))) return erreurBon('Prestation ' + (i + 1) + ' : indiquez la quantité.');
       var eo = ls[i]._opt.verifier(i + 1); if (eo) return erreurBon(eo);
     }
     var epr = blocPrecB.verifier(); if (epr) return erreurBon(epr);

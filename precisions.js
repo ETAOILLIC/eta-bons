@@ -1,7 +1,8 @@
 /**
  * ETA Oillic – précisions demandées par certaines prestations (collecte des algues, épandage de boues, rotations)
- * Version 1.2 – 2026-11-16 : précision « rotations » (rotations demandées dans la mission, volume de chaque rotation
- *   sur le bon, total proposé comme quantité) et client par défaut des prestations ;
+ * Version 1.3 – 2026-11-17 : rotations — le chauffeur n'indique que le nombre de rotations ; les pesées (une par
+ *   rotation, ticket de la bascule) sont saisies par le bureau dans la Gestion (option pesees) ;
+ *   1.2 – 2026-11-16 : précision « rotations » et client par défaut des prestations ;
  *   1.1 – 2026-11-13 : précision « boues » (station de provenance, preneur, parcelles et volume) ; 1.0 – 2026-11-03
  *
  * Prestations → « Précisions » : plage (plages du client, cases à cocher), remorques (preneurs et nombre
@@ -11,9 +12,10 @@
  *   preneur choisi dans la liste (Paramètres → « Preneurs boues ») ; sur le bon, parcelles avec volume (m³ ou t)
  *   — preneur = SARL : parcelles du référentiel et surface obligatoire ; sinon nom libre, surface facultative.
  *   Le volume total est proposé comme quantité des prestations « boues » qui ne sont pas à l'heure (ex. épandeur, t).
- * Rotations (1.2) : mission = nombre de rotations demandées (facultatif) ; bon = une ligne par rotation avec son volume
- *   (m³), « Ajouter une rotation » reprend le volume de la précédente ; le total est proposé comme quantité des
- *   prestations « rotations » qui ne sont pas à l'heure (ex. transfert de boues facturé au m³).
+ * Rotations (1.3) : mission = nombre de rotations demandées (facultatif) ; bon (téléphone, saisie au planning) =
+ *   nombre de rotations faites, la quantité des prestations « rotations » non horaires reste vide (« pesées au
+ *   bureau ») ; Gestion (option pesees: true) = une ligne par rotation avec sa pesée (t = m³), le total est proposé
+ *   comme quantité. quantiteLibre(code) dit si une quantité vide est admise pour cette prestation.
  * Client par défaut (1.2) : une prestation qui a un client par défaut (Prestations → « Client par défaut ») le
  *   propose dès qu'elle est choisie, si aucun client ne l'est encore (comme « Client boues » pour les boues).
  * Utilisé par index.html (téléphone), bureau.html (mission et saisie de bon) et gestion.html (correction).
@@ -52,7 +54,7 @@
       + '.pr-info{margin:0 0 8px;color:var(--doux,#53636F)}.pr-parc{margin-top:4px}'
       + '.pr-rot{display:flex;align-items:center;gap:8px;margin:0 0 8px}.pr-rot .pr-rot-n{min-width:90px}'
       + '.pr-rot input{max-width:110px;margin:0}.pr-rot-total{font-weight:700;margin:4px 0 10px}.pr-rot-total.ecart{color:var(--rouge,#A8231B)}'
-      + '.pr-champ input{display:block;max-width:160px;margin-top:4px}'
+      + '.pr-champ input{display:block;max-width:160px;margin-top:4px}.pr-note{font-size:.9em;opacity:.8;margin:6px 0 0}'
       + '@media (max-width:520px){.pr-preneur.avec{grid-template-columns:1fr auto}.pr-preneur.avec .pr-nb{grid-column:1}}';
     document.head.appendChild(s);
   }
@@ -68,7 +70,9 @@
     var plagesCochees = [];          // plages choisies (gardées quand la liste est redessinée)
     var preneurs = [];               // [{ nom, remorques }]
     var station = '', preneurBoues = ''; // boues : station de provenance, preneur (code client)
-    var rotations = [];              // rotations du bon : volumes saisis (texte)
+    var rotations = [];              // rotations du bon : pesées saisies (texte, Gestion)
+    var nbRot = '';                  // nombre de rotations faites (téléphone, saisie au planning)
+    var pesees = !!o.pesees;         // Gestion : une ligne par rotation avec sa pesée
     var rotDemandees = '';           // rotations demandées (mission ; sur le bon : rappel de la mission)
     var codesVus = [];               // prestations déjà vues (le client par défaut n'est proposé qu'à l'arrivée d'une prestation)
     var titreCadre = cadre !== el ? cadre.querySelector('legend, h4') : null, titreOrigine = titreCadre ? titreCadre.textContent : '';
@@ -105,7 +109,33 @@
     }
     function nbRotations() { return rotations.filter(function (x) { return nombreTxt(x) > 0; }).length; }
     /** Total des rotations proposé comme quantité des prestations « rotations » non horaires (ex. m³). */
-    function proposerRotations() { if (besoin.rotations && !mission) proposerPour('rotations', totalRotations()); }
+    function proposerRotations() {
+      if (!besoin.rotations || mission) return;
+      if (pesees) proposerPour('rotations', totalRotations());
+      else marquerQuantites();
+    }
+    /** Prestation qui suit les rotations et n'est pas à l'heure : sa quantité vient des pesées du bureau. */
+    function suitRotations(c) {
+      var ps = (o.prestations && o.prestations()) || [];
+      var p = ps.filter(function (x) { return x.code === c; })[0];
+      var parent = ps.filter(function (x) { return (x.variantes || []).indexOf(c) >= 0; })[0];
+      var avec = [p, parent].some(function (x) { return x && (x.precisions || []).indexOf('rotations') >= 0; });
+      var u = (p || parent || {}).unite || '';
+      return avec && !/^h(eures?)?$/i.test(String(u).trim());
+    }
+    /** Téléphone et planning : la quantité de ces prestations reste vide, avec l'indication « pesées au bureau ». */
+    function marquerQuantites() {
+      var cont = o.lignes && o.lignes();
+      if (!cont) return;
+      Array.prototype.forEach.call(cont.children, function (l) {
+        if (!l._opt) return;
+        var q = l.querySelector('.l-qte, .e-qte'), sel = l.querySelector('select');
+        var c = l._opt.code() || (sel ? sel.value : '');
+        if (!q) return;
+        if (!q.hasAttribute('data-ph')) q.setAttribute('data-ph', q.placeholder || '');
+        q.placeholder = c && besoin.rotations && suitRotations(c) ? 'pesées au bureau' : q.getAttribute('data-ph');
+      });
+    }
     function proposerPour(cle, total) {
       var cont = o.lignes && o.lignes();
       if (!cont) return;
@@ -141,6 +171,8 @@
       var st = zone.querySelector('.pr-station'), pb = zone.querySelector('.pr-preneur-boues');
       if (st) station = st.value;
       if (pb) preneurBoues = pb.value;
+      var nr = zone.querySelector('.pr-rot-nb');
+      if (nr) nbRot = nr.value.trim();
       if (zone.querySelector('.pr-rotations')) {
         rotations = Array.prototype.map.call(zone.querySelectorAll('.pr-rot-v'), function (i) { return i.value.trim(); });
       }
@@ -149,15 +181,21 @@
     }
     /** Ligne « 2 rotations, 24 m³ (sur 6 demandées) » sous la liste des rotations. */
     function texteTotal() {
-      var n = nbRotations(), t = totalRotations(), d = nombreTxt(rotDemandees);
+      var d = nombreTxt(rotDemandees);
+      if (!pesees) {
+        var k = nombreTxt(nbRot);
+        return k > 0 && d > 0 ? k + ' faite' + (k > 1 ? 's' : '') + ' sur ' + d + ' demandée' + (d > 1 ? 's' : '') : '';
+      }
+      var n = nbRotations(), t = totalRotations();
       return n + ' rotation' + (n > 1 ? 's' : '') + ', ' + String(t).replace('.', ',') + ' m³'
         + (d > 0 ? ' (' + d + ' demandée' + (d > 1 ? 's' : '') + ')' : '');
     }
     function majTotal() {
       var el2 = zone.querySelector('.pr-rot-total'); if (!el2) return;
-      var d = nombreTxt(rotDemandees);
-      el2.textContent = 'Total : ' + texteTotal();
-      el2.className = 'pr-rot-total' + (d > 0 && nbRotations() !== d ? ' ecart' : '');
+      var d = nombreTxt(rotDemandees), n = pesees ? nbRotations() : nombreTxt(nbRot), t = texteTotal();
+      el2.textContent = t ? (pesees ? 'Total : ' : '') + t : '';
+      el2.hidden = !t;
+      el2.className = 'pr-rot-total' + (d > 0 && n > 0 && n !== d ? ' ecart' : '');
     }
     function plagesClient() { return (client && client.plages) || []; }
     function stationsClient() { return (client && client.stations) || []; }
@@ -207,14 +245,20 @@
         if (mission) {
           h += '<div class="pr-rotations-m"><label class="pr-champ">Nombre de rotations demandées <small>(facultatif)</small>'
             + '<input type="text" class="pr-rot-dem" inputmode="numeric" autocomplete="off" maxlength="4" value="' + esc(rotDemandees) + '"></label></div>';
+        } else if (!pesees) {
+          var dm = nombreTxt(rotDemandees);
+          h += '<div class="pr-rotations-nb"><label class="pr-champ">Nombre de rotations faites'
+            + (dm > 0 ? ' <small>– ' + dm + ' demandée' + (dm > 1 ? 's' : '') + '</small>' : '')
+            + '<input type="text" class="pr-rot-nb" inputmode="numeric" autocomplete="off" maxlength="3" value="' + esc(nbRot) + '"></label>'
+            + '<p class="pr-rot-total"></p><p class="pr-note">Les pesées (tickets de la bascule) sont saisies au bureau : laissez la quantité vide.</p></div>';
         } else {
           if (!rotations.length) rotations = [''];
           var d = nombreTxt(rotDemandees);
-          h += '<div class="pr-rotations"><div class="pr-titre">Rotations et volume de chacune (m³)'
+          h += '<div class="pr-rotations"><div class="pr-titre">Pesée de chaque rotation (t = m³)'
             + (d > 0 ? ' <small>– ' + d + ' rotation' + (d > 1 ? 's' : '') + ' demandée' + (d > 1 ? 's' : '') + '</small>' : '') + '</div>'
             + rotations.map(function (v, i) {
               return '<div class="pr-rot"><span class="pr-rot-n">Rotation ' + (i + 1) + '</span>'
-                + '<input type="text" class="pr-rot-v" inputmode="decimal" autocomplete="off" placeholder="m³" aria-label="Volume de la rotation ' + (i + 1) + ' en m³" value="' + esc(v) + '"> m³'
+                + '<input type="text" class="pr-rot-v" inputmode="decimal" autocomplete="off" placeholder="t" aria-label="Pesée de la rotation ' + (i + 1) + ' en tonnes" value="' + esc(v) + '"> t'
                 + '<button type="button" class="pr-retirer pr-rot-retirer"' + (rotations.length === 1 ? ' hidden' : '') + '>Retirer</button></div>';
             }).join('')
             + '<p class="pr-rot-total"></p>'
@@ -224,6 +268,7 @@
       zone.innerHTML = h;
       cadre.hidden = !h;
       majTotal();
+      if (!pesees && !mission) marquerQuantites(); // pose ou retire l'indication « pesées au bureau »
       // Titre du cadre (legend ou h4) : « Épandage de boues » / « Rotations » quand seule cette précision est demandée
       var seul = !besoin.plage && !besoin.remorques && !besoin.preneur;
       if (titreCadre) titreCadre.textContent = seul && besoin.boues && !besoin.rotations ? 'Épandage de boues'
@@ -239,7 +284,7 @@
         var l = zone.querySelectorAll('.pr-nom'); l[l.length - 1].focus();
       } else if (e.target.classList.contains('pr-rot-ajout')) {
         lireEcran();
-        rotations.push(rotations.length ? rotations[rotations.length - 1] : ''); // même volume que la rotation précédente
+        rotations.push(''); // une pesée par ticket
         dessiner(); proposerRotations();
         var r = zone.querySelectorAll('.pr-rot-v'); r[r.length - 1].focus(); r[r.length - 1].select();
         signaler();
@@ -250,7 +295,7 @@
       }
     });
     zone.addEventListener('input', function (e) {
-      if (e.target.classList.contains('pr-rot-v') || e.target.classList.contains('pr-rot-dem')) { lireEcran(); majTotal(); proposerRotations(); }
+      if (e.target.classList.contains('pr-rot-v') || e.target.classList.contains('pr-rot-dem') || e.target.classList.contains('pr-rot-nb')) { lireEcran(); majTotal(); proposerRotations(); }
     });
     /** Le formulaire de la page est prévenu d'une modification faite par un bouton (saisie en cours). */
     function signaler() { try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (x) {} }
@@ -310,10 +355,13 @@
       lire: function () {
         lireEcran();
         var r = { plages: besoin.plage ? plagesCochees.slice() : [], preneurs: [], boues: { station: '', preneur: '', parcelles: [] },
-          rotations: [], rotationsDemandees: '' };
+          rotations: [], nombreRotations: '', rotationsDemandees: '' };
         if (besoin.rotations) {
           if (mission) r.rotationsDemandees = rotDemandees;
-          else r.rotations = rotations.filter(function (x) { return x !== ''; });
+          else if (pesees) {
+            r.rotations = rotations.filter(function (x) { return x !== ''; });
+            r.nombreRotations = String(rotations.length); // lignes sans pesée : le nombre de rotations est gardé
+          } else r.nombreRotations = nbRot;
         }
         if (besoin.remorques || besoin.preneur) {
           r.preneurs = preneurs.filter(function (x) { return x.nom || x.remorques; })
@@ -335,6 +383,9 @@
         preneurs = (v.preneurs || []).map(function (x) { return typeof x === 'string' ? { nom: x, remorques: '' } : { nom: x.nom || '', remorques: x.remorques === '' || x.remorques == null ? '' : String(x.remorques) }; });
         station = v.station || ''; preneurBoues = v.preneurBoues || '';
         rotations = (v.rotations || []).map(function (x) { return String(x).replace('.', ','); });
+        nbRot = v.nombreRotations === '' || v.nombreRotations == null ? (rotations.length ? String(rotations.length) : '') : String(v.nombreRotations);
+        // Gestion : pas encore de pesées → une ligne vide par rotation faite
+        if (pesees && !rotations.length && Number(nbRot) > 0) { for (var z = 0; z < Number(nbRot) && z < 100; z++) rotations.push(''); }
         rotDemandees = v.rotationsDemandees === '' || v.rotationsDemandees == null ? '' : String(v.rotationsDemandees);
         codesVus = [];
         client = null; // le client est redonné par maj() : rien n'est filtré d'après le client précédent
@@ -367,13 +418,22 @@
           var e = listeBoues() ? listeBoues().verifier(bouesSarl()) : '';
           if (e) return 'Boues – ' + e.charAt(0).toLowerCase() + e.slice(1);
         }
-        if (besoin.rotations) {
-          if (!r.rotations.length) return 'Rotations : indiquez le volume de chaque rotation (m³).';
-          for (var j = 0; j < rotations.length; j++) {
-            if (!(nombreTxt(rotations[j]) > 0)) return 'Rotation ' + (j + 1) + ' : indiquez le volume en m³ (ou retirez la ligne).';
+        if (besoin.rotations && !mission) {
+          if (!pesees) {
+            var k = nombreTxt(nbRot);
+            if (!(k >= 1 && k <= 100 && Math.round(k) === k)) return 'Rotations : indiquez le nombre de rotations faites.';
+          } else if (r.rotations.length) { // pesées : toutes ou aucune
+            for (var j = 0; j < rotations.length; j++) {
+              if (!(nombreTxt(rotations[j]) > 0)) return 'Rotation ' + (j + 1) + ' : indiquez la pesée (t), ou retirez la ligne.';
+            }
           }
         }
         return '';
+      },
+      /** Quantité vide admise pour cette prestation : elle suit les rotations et les pesées ne sont pas encore saisies. */
+      quantiteLibre: function (code) {
+        if (!besoin.rotations || mission || !code || !suitRotations(code)) return false;
+        return !pesees || !rotations.some(function (x) { return nombreTxt(x) > 0; });
       },
       besoins: function () { return { plage: besoin.plage, remorques: besoin.remorques, preneur: besoin.preneur, boues: besoin.boues, rotations: besoin.rotations }; },
       /** Liste des parcelles SARL chargée après coup : rafraîchit les choix. */
@@ -384,7 +444,8 @@
   /**
    * Texte court pour les listes : « Penvins, Kerfontaine – Dupont (3 remorques), Martin (1 remorque) » ;
    * boues = { station, preneurNom, volume } : « boues Theix – Le Saindo → Launay Didier, 54 m³ » ;
-   * rot = { demandees, volumes } : « 6 rotations demandées » (mission) ou « 3 rotations, 36 m³ » (bon).
+   * rot = { demandees, volumes, nombre } : « 6 rotations demandées » (mission), « 3 rotations, 36 m³ » (bon pesé)
+   * ou « 4 rotations, pesées à saisir » (bon pas encore pesé).
    */
   function resume(plages, preneurs, boues, rot) {
     var p = (preneurs || []).map(function (x) {
@@ -398,6 +459,8 @@
       var t = Math.round(rot.volumes.reduce(function (s, x) { return s + Number(x); }, 0) * 100) / 100;
       r = rot.volumes.length + ' rotation' + (rot.volumes.length > 1 ? 's' : '') + ', ' + String(t).replace('.', ',') + ' m³'
         + (rot.demandees ? ' (' + rot.demandees + ' demandée' + (rot.demandees > 1 ? 's' : '') + ')' : '');
+    } else if (rot && Number(rot.nombre) > 0) {
+      r = rot.nombre + ' rotation' + (rot.nombre > 1 ? 's' : '') + ', pesées à saisir';
     } else if (rot && rot.demandees) {
       r = rot.demandees + ' rotation' + (rot.demandees > 1 ? 's' : '') + ' demandée' + (rot.demandees > 1 ? 's' : '');
     }

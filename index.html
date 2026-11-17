@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – index.html – Version 0.23 – 2026-11-16 (rotations : volume de chaque rotation, client par défaut des prestations) ; 0.22 – 2026-11-15 (rapidité) -->
+<!-- ETA Oillic – index.html – Version 0.26 – 2026-11-17 (rotations : le chauffeur n'indique que le nombre, pesées au bureau) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -823,7 +823,8 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
       plages: blocPrec.lire().plages,
       preneurs: blocPrec.lire().preneurs,
       boues: blocPrec.lire().boues,
-      rotations: blocPrec.lire().rotations
+      rotations: blocPrec.lire().rotations,
+      nombreRotations: blocPrec.lire().nombreRotations
     };
   }
 
@@ -836,7 +837,7 @@ label.pj-ajout{display:flex;align-items:center;justify-content:center;margin:12p
     for (var i = 0; i < ls.length; i++) {
       if (!ls[i].querySelector('.l-presta').value) return 'Prestation ' + (i + 1) + ' : choisissez la prestation.';
       var ev = ls[i]._opt.code() ? '' : ls[i]._opt.verifier(i + 1); if (ev) return ev;
-      if (!(nombre(ls[i].querySelector('.l-qte').value) > 0)) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
+      if (!(nombre(ls[i].querySelector('.l-qte').value) > 0) && !(ls[i].querySelector('.l-qte').value.trim() === '' && blocPrec.quantiteLibre(ls[i]._opt.code() || ls[i].querySelector('.l-presta').value))) return 'Prestation ' + (i + 1) + ' : indiquez la quantité.';
       var eo = ls[i]._opt.verifier(i + 1); if (eo) return eo;
     }
     var epr = blocPrec.verifier(); if (epr) return epr;
