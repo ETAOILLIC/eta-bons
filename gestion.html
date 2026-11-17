@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – gestion.html – Version 0.28 – 2026-11-17 (onglet Bureau : liens personnels, auteur des corrections) ; 0.27 (travail à plusieurs) ; 0.26 – 2026-11-17 (pesées des rotations saisies au bureau, bons non pesés non facturables) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.21 – 2026-11-13 (épandage de boues) -->
+<!-- ETA Oillic – gestion.html – Version 0.29 – 2026-11-17 (rapidité : affichage immédiat des dernières données, bons mis à jour sans tout recharger) ; 0.28 (onglet Bureau, auteur des corrections) ; 0.27 (travail à plusieurs) ; 0.26 – 2026-11-17 (pesées des rotations saisies au bureau, bons non pesés non facturables) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.21 – 2026-11-13 (épandage de boues) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -369,6 +369,33 @@ table.voir ul{margin:0;padding-left:18px}
   } catch (e) {}
 
   var D = null, anneeHisto = '', onglet = 'afacturer', decoches = {}, decochesSarl = {}, bonOuvert = null, ficheOuverte = null, occupe = 0;
+  var numCharge = 0;                    // dernière demande de chargement (les réponses plus anciennes sont ignorées)
+  var CLE_D = 'eta-gestion-donnees';    // dernières données reçues, gardées sur cet ordinateur (v0.29)
+  function preparer(d) { d.prestations.forEach(function (p) { ['plage', 'remorques', 'preneur', 'boues', 'rotations'].forEach(function (k) { p['prec_' + k] = (p.precisions || []).indexOf(k) >= 0; }); }); }
+  function garder() { try { if (D) localStorage.setItem(CLE_D, JSON.stringify({ jeton: JETON, annee: anneeHisto, d: D })); } catch (e) {} }
+  function reprendre() {
+    try {
+      var x = JSON.parse(localStorage.getItem(CLE_D) || 'null');
+      if (x && x.jeton === JETON && x.annee === anneeHisto && x.d && x.d.aFacturer && x.d.prestations) return x.d;
+    } catch (e) {}
+    return null;
+  }
+  /** Bons renvoyés par le serveur après une action : remplacés tout de suite, sans tout recharger (v0.29). */
+  function majBons(liste) {
+    if (!D || !liste || !liste.length) return;
+    liste.forEach(function (b) {
+      var autre = function (x) { return x.numero !== b.numero; };
+      D.aFacturer = D.aFacturer.filter(autre);
+      D.historique = D.historique.filter(autre);
+      if (b.statut === 'À facturer') D.aFacturer.push(b);
+      else if (Number((b.date || '').slice(0, 4)) === Number(D.anneeHistorique)) D.historique.push(b);
+      (D.sarl.liste || []).forEach(function (e) { if (e.numero === b.numero) e.bon = b; });
+    });
+    D.aFacturer.sort(function (a, b) { return a.numero.localeCompare(b.numero); });
+    D.historique.sort(function (a, b) { return b.date.localeCompare(a.date) || b.numero.localeCompare(a.numero); });
+    garder();
+    afficher();
+  }
 
   var FICHES = {
     client: { titre: 'Clients', un: 'client', champs: [
@@ -457,18 +484,25 @@ table.voir ul{margin:0;padding-left:18px}
     if (!JETON) { $('chargement').hidden = true; $('vue-lien').hidden = false; return Promise.resolve(); }
     if (!silencieux) $('chargement').hidden = false;
     etat('Mise à jour…'); occupe++;
+    var n = ++numCharge;
     return appel('gestionCharger', { annee: anneeHisto })
       .then(function (d) {
-        occupe--; D = d; $('chargement').hidden = true; $('alerte').hidden = true;
+        occupe--;
+        if (n !== numCharge) return; // une demande plus récente est partie entre-temps
+        D = d; $('chargement').hidden = true; $('alerte').hidden = true;
         $('qui').textContent = d.utilisateur || ''; // personne du bureau (lien personnel, v0.28)
-        D.prestations.forEach(function (p) { ['plage', 'remorques', 'preneur', 'boues', 'rotations'].forEach(function (k) { p['prec_' + k] = (p.precisions || []).indexOf(k) >= 0; }); });
+        preparer(D);
+        garder();
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         afficher();
       })
       .catch(function (e) {
-        occupe--; $('chargement').hidden = true; etat('');
+        occupe--;
+        if (n !== numCharge) return;
+        $('chargement').hidden = true; etat('');
         if (/Lien du bureau non valide/.test(e.message)) {
-          try { localStorage.removeItem(CLE); } catch (x) {}
+          try { localStorage.removeItem(CLE); localStorage.removeItem(CLE_D); } catch (x) {}
+          D = null; Array.prototype.forEach.call(document.querySelectorAll('main > section:not(#vue-lien)'), function (s) { s.hidden = true; });
           $('lien-texte').textContent = e.message; $('vue-lien').hidden = false; return;
         }
         $('alerte').textContent = 'Mise à jour impossible : ' + e.message; $('alerte').hidden = false;
@@ -598,7 +632,7 @@ table.voir ul{margin:0;padding-left:18px}
     if (!confirm('Marquer ' + numeros.length + ' bon' + (numeros.length > 1 ? 's' : '') + ' de ' + nom + ' comme facturé' + (numeros.length > 1 ? 's' : '') + (piece ? ' (pièce ' + piece + ')' : '') + ' ?')) return;
     bouton.disabled = true; occupe++;
     appel('gestionFacturer', { numeros: numeros, piece: piece.trim() })
-      .then(function (r) { occupe--; toast(r.nombre + ' bon(s) marqué(s) facturé(s)' + (r.piece ? ' : ' + r.piece : '')); return charger(true); })
+      .then(function (r) { occupe--; majBons(r.bons); toast(r.nombre + ' bon(s) marqué(s) facturé(s)' + (r.piece ? ' : ' + r.piece : '')); charger(true); })
       .catch(function (e) { occupe--; bouton.disabled = false; toast(e.message, true); charger(true); });
   }
 
@@ -766,9 +800,10 @@ table.voir ul{margin:0;padding-left:18px}
     appel('gestionModifierBon', { bon: donnees })
       .then(function (r) {
         occupe--; $('dlg-bon').close();
+        majBons(r.bons);
         toast(r.modifie ? 'Bon ' + r.numero + ' corrigé (' + r.elements.join(', ').toLowerCase() + ')'
           + (r.envoyeSarl ? '. Déjà envoyé à l\'exploitation : mettez-le à jour depuis l\'onglet Trois Étangs.' : '') : 'Aucune modification');
-        return charger(true);
+        if (r.modifie) charger(true);
       })
       .catch(function (err) {
         occupe--; $('b-enregistrer').disabled = false;
@@ -785,8 +820,9 @@ table.voir ul{margin:0;padding-left:18px}
     if (!motif.trim()) return erreurBon('Indiquez le motif de l\'annulation.');
     occupe++;
     appel('gestionAnnulerBon', { numero: b.numero, motif: motif.trim() })
-      .then(function () {
+      .then(function (r) {
         occupe--; $('dlg-bon').close();
+        majBons(r && r.bons);
         toast('Bon ' + b.numero + ' annulé' + (b.envoyeSarl ? '. Déjà envoyé à l\'exploitation : retirez-le depuis l\'onglet Trois Étangs.' : ''));
         return charger(true);
       })
@@ -1162,7 +1198,7 @@ table.voir ul{margin:0;padding-left:18px}
     if (!confirm('Remettre le bon ' + n + ' dans les bons à facturer ? Le n° de pièce EBP sera effacé.')) return;
     occupe++;
     appel('gestionRemettreAFacturer', { numero: n })
-      .then(function () { occupe--; toast('Bon ' + n + ' remis à facturer'); return charger(true); })
+      .then(function (r) { occupe--; majBons(r && r.bons); toast('Bon ' + n + ' remis à facturer'); charger(true); })
       .catch(function (err) { occupe--; toast(err.message, true); });
   });
 
@@ -1271,7 +1307,17 @@ table.voir ul{margin:0;padding-left:18px}
     if (D && !occupe && !$('dlg-bon').open && !$('dlg-fiche').open && !$('dlg-pj').open && !$('dlg-voir').open && document.visibilityState === 'visible') charger(true);
   }, 120000);
 
-  charger(false);
+  // Ouverture (v0.29) : les dernières données connues s'affichent tout de suite, la mise à jour suit
+  var enMemoire = JETON ? reprendre() : null;
+  if (enMemoire) {
+    D = enMemoire;
+    $('chargement').hidden = true;
+    $('qui').textContent = D.utilisateur || '';
+    afficher();
+    charger(true);
+  } else {
+    charger(false);
+  }
 })();
 </script>
 </body>
