@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.26 – 2026-11-17 (saisie d'un bon : nombre de rotations, pesées dans la Gestion) ; 0.23.1 (absences, glisser-déposer) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
+<!-- ETA Oillic – bureau.html – Version 0.28 – 2026-11-17 (liens personnels : nom de la personne connectée, auteur de la dernière modification d'une mission) ; 0.26 (saisie d'un bon : nombre de rotations) ; 0.23.1 (absences, glisser-déposer) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -53,6 +53,7 @@ button{cursor:pointer}
 .espace{flex:1}
 .barre .action{background:var(--sur-barre);color:var(--barre);border:0;border-radius:8px;min-height:36px;padding:4px 14px;font-weight:700}
 .etat{font-size:13px;opacity:.85;min-width:110px;text-align:right}
+.qui{font-size:13px;font-weight:700;opacity:.9;white-space:nowrap}
 
 main{padding:14px 16px 40px}
 .alerte{background:var(--rouge-pale);color:var(--rouge);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-weight:700}
@@ -190,6 +191,7 @@ textarea{min-height:64px;resize:vertical}
     <button type="button" id="cette">Cette semaine</button>
   </div>
   <span class="espace"></span>
+  <span class="qui" id="qui"></span>
   <span class="etat" id="etat"></span>
   <button type="button" class="clair" id="actualiser" title="Recharger le planning">Actualiser</button>
   <a class="clair" href="gestion.html">Gestion</a>
@@ -200,7 +202,7 @@ textarea{min-height:64px;resize:vertical}
 <main>
   <section class="vide-lien" id="vue-lien" hidden>
     <h2 style="margin-top:0">Lien du bureau non valide</h2>
-    <p id="lien-texte">Ouvrez le lien de l'écran bureau : dans la Google Sheet, menu ETA → « Lien de l'écran bureau ». Il est ensuite mémorisé sur cet ordinateur.</p>
+    <p id="lien-texte">Ouvrez votre lien personnel du bureau (demandez-le à une personne du bureau : Gestion → onglet « Bureau »). Il donne accès au planning et à la Gestion, et reste mémorisé sur cet ordinateur.</p>
   </section>
 
   <section id="vue-planning" hidden>
@@ -446,6 +448,7 @@ textarea{min-height:64px;resize:vertical}
         if (voulu && dansFenetre(voulu)) D.lundi = voulu;
         debut = D.lundi;
         garder();
+        $('qui').textContent = D.utilisateur || ''; // personne du bureau (lien personnel, v0.28)
         $('chargement').hidden = true; $('vue-planning').hidden = false; $('alerte').hidden = true;
         dessiner();
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
@@ -725,7 +728,7 @@ textarea{min-height:64px;resize:vertical}
       datePrevue: (defauts && defauts.datePrevue) || '', chauffeur: (defauts && defauts.chauffeur) || '' };
     var fige = !!m && (m.statut === 'Faite' || m.statut === 'Annulée');
     $('f-titre').textContent = m ? 'Mission ' + m.id : 'Nouvelle mission';
-    $('f-sous').textContent = m ? 'Statut : ' + m.statut + (m.datePrevue ? '' : ' (en attente)') : 'Seuls le client et la prestation sont obligatoires.';
+    $('f-sous').textContent = m ? 'Statut : ' + m.statut + (m.datePrevue ? '' : ' (en attente)') + (m.modifieePar ? ' · dernière modification : ' + m.modifieePar : '') : 'Seuls le client et la prestation sont obligatoires.';
     $('f-info').hidden = !fige;
     $('f-info').textContent = fige ? 'Bon ' + (m.numeroBon || '') + ' reçu : la mission ne peut plus être modifiée.' : '';
     $('f-client').innerHTML = options(D.clients, v.client, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });

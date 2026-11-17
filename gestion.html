@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – gestion.html – Version 0.26 – 2026-11-17 (pesées des rotations saisies au bureau, bons non pesés non facturables) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.21 – 2026-11-13 (épandage de boues) -->
+<!-- ETA Oillic – gestion.html – Version 0.28 – 2026-11-17 (onglet Bureau : liens personnels, auteur des corrections) ; 0.27 (travail à plusieurs) ; 0.26 – 2026-11-17 (pesées des rotations saisies au bureau, bons non pesés non facturables) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.21 – 2026-11-13 (épandage de boues) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -49,6 +49,7 @@ button{cursor:pointer}
 .onglets .compte{display:inline-block;min-width:22px;padding:0 6px;margin-left:4px;border-radius:11px;background:var(--ambre);color:#2A1E05;font-size:12px;line-height:20px}
 .espace{flex:1}
 .etat{font-size:13px;opacity:.85}
+.qui{font-size:13px;font-weight:700;opacity:.9;white-space:nowrap}
 .barre .clair,.barre a.clair{background:transparent;border:1.5px solid currentColor;color:inherit;border-radius:8px;
   min-height:36px;padding:4px 12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center}
 
@@ -184,9 +185,11 @@ table.voir ul{margin:0;padding-left:18px}
     <button type="button" role="tab" data-onglet="client">Clients</button>
     <button type="button" role="tab" data-onglet="prestation">Prestations</button>
     <button type="button" role="tab" data-onglet="chauffeur">Chauffeurs</button>
+    <button type="button" role="tab" data-onglet="bureau">Bureau</button>
     <button type="button" role="tab" data-onglet="phyto">Produits phyto</button>
   </nav>
   <span class="espace"></span>
+  <span class="qui" id="qui"></span>
   <span class="etat" id="etat"></span>
   <button type="button" class="clair" id="actualiser">Actualiser</button>
   <a class="clair" href="bureau.html">Planning</a>
@@ -195,7 +198,7 @@ table.voir ul{margin:0;padding-left:18px}
 <main>
   <section class="vide-lien" id="vue-lien" hidden>
     <h2 style="margin-top:0">Lien du bureau non valide</h2>
-    <p id="lien-texte">Ouvrez le lien de l'écran bureau (Google Sheet, menu ETA → « Lien de l'écran bureau ») : il donne accès au planning et à la gestion, et reste mémorisé sur cet ordinateur.</p>
+    <p id="lien-texte">Ouvrez votre lien personnel du bureau (demandez-le à une personne du bureau : Gestion → onglet « Bureau »). Il donne accès au planning et à la Gestion, et reste mémorisé sur cet ordinateur.</p>
   </section>
   <div class="alerte" id="alerte" hidden></div>
   <div class="chargement" id="chargement">Chargement…</div>
@@ -397,6 +400,11 @@ table.voir ul{margin:0;padding-left:18px}
       { cle: 'telephone', nom: 'Téléphone portable' },
       { cle: 'actif', nom: 'Actif (son lien fonctionne et il apparaît au planning)', caseACocher: true }],
       colonnes: [['code', 'Code'], ['nom', 'Nom'], ['telephone', 'Téléphone'], ['lien', 'Lien personnel'], ['actif', 'Actif']] },
+    bureau: { titre: 'Bureau', un: 'utilisateur', champs: [
+      { cle: 'code', nom: 'Code (initiales, ex. SO)', code: true }, { cle: 'nom', nom: 'Nom', requis: true },
+      { cle: 'telephone', nom: 'Téléphone portable (pour lui envoyer son lien)' },
+      { cle: 'actif', nom: 'Actif (son lien ouvre le planning et la Gestion)', caseACocher: true }],
+      colonnes: [['code', 'Code'], ['nom', 'Nom'], ['telephone', 'Téléphone'], ['lien', 'Lien personnel'], ['actif', 'Actif']] },
     phyto: { titre: 'Produits phyto', un: 'produit', champs: [
       { cle: 'code', nom: 'N° AMM (7 chiffres)', code: true }, { cle: 'nom', nom: 'Nom commercial complet', requis: true, large: true },
       { cle: 'categorie', nom: 'Catégorie (herbicide, fongicide…)' }, { cle: 'uniteDose', nom: 'Unité de dose (L/ha, kg/ha…)' },
@@ -452,6 +460,7 @@ table.voir ul{margin:0;padding-left:18px}
     return appel('gestionCharger', { annee: anneeHisto })
       .then(function (d) {
         occupe--; D = d; $('chargement').hidden = true; $('alerte').hidden = true;
+        $('qui').textContent = d.utilisateur || ''; // personne du bureau (lien personnel, v0.28)
         D.prestations.forEach(function (p) { ['plage', 'remorques', 'preneur', 'boues', 'rotations'].forEach(function (k) { p['prec_' + k] = (p.precisions || []).indexOf(k) >= 0; }); });
         etat('À jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         afficher();
@@ -708,7 +717,7 @@ table.voir ul{margin:0;padding-left:18px}
     majSarl();
     $('b-histo').hidden = !b.corrections.length;
     $('b-histo').innerHTML = '<b>Corrections précédentes</b><ul>' + b.corrections.map(function (c) {
-      return '<li>' + horodate(c.date) + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
+      return '<li>' + horodate(c.date) + (c.par ? ' (' + esc(c.par) + ')' : '') + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
     }).join('') + '</ul>';
     dessinerPiecesBon();
     $('b-erreur').hidden = true; $('b-enregistrer').disabled = false;
@@ -725,7 +734,7 @@ table.voir ul{margin:0;padding-left:18px}
     e.preventDefault();
     var b = bonOuvert, sarl = sarlVisible();
     var donnees = {
-      numero: b.numero, date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
+      numero: b.numero, version: b.version, date: $('b-date').value, client: $('b-client').value, lieu: $('b-lieu').value.trim(),
       parcelles: sarl ? parcellesSarl.lire() : [], heures: $('b-heures').value.trim(), remarques: $('b-remarques').value.trim(),
       lignes: Array.prototype.reduce.call($('b-lignes').children, function (r, d) {
         return r.concat([{ code: d._opt.code(), quantite: d.querySelector('.e-qte').value.trim() }], d._opt.lire());
@@ -761,7 +770,11 @@ table.voir ul{margin:0;padding-left:18px}
           + (r.envoyeSarl ? '. Déjà envoyé à l\'exploitation : mettez-le à jour depuis l\'onglet Trois Étangs.' : '') : 'Aucune modification');
         return charger(true);
       })
-      .catch(function (err) { occupe--; $('b-enregistrer').disabled = false; erreurBon(err.message); });
+      .catch(function (err) {
+        occupe--; $('b-enregistrer').disabled = false;
+        if (/entre-temps/.test(err.message)) { $('dlg-bon').close(); toast(err.message); return charger(true); } // corrigé sur un autre poste
+        erreurBon(err.message);
+      });
   });
   function erreurBon(t) { $('b-erreur').textContent = t; $('b-erreur').hidden = false; }
 
@@ -822,7 +835,7 @@ table.voir ul{margin:0;padding-left:18px}
       ['Pièces jointes', b.pieces.length ? '<ul class="pj-liste">' + b.pieces.map(function (p) { return lignePiece(p, false); }).join('') + '</ul>' : ''],
       ['Feuille d\'échange SARL', b.envoyeSarl ? 'envoyé le ' + horodate(b.envoyeSarl) : ''],
       ['Corrections', b.corrections.length ? '<ul>' + b.corrections.map(function (c) {
-        return '<li>' + horodate(c.date) + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
+        return '<li>' + horodate(c.date) + (c.par ? ' (' + esc(c.par) + ')' : '') + ' : ' + esc(c.element) + ', « ' + esc(c.avant) + ' » devient « ' + esc(c.apres) + ' »</li>';
       }).join('') + '</ul>' : '']
     ].filter(function (x) { return x[1] && x[1] !== '<span class="voir-detail"></span>'; });
     $('v-titre').textContent = 'Bon ' + b.numero;
@@ -1160,7 +1173,7 @@ table.voir ul{margin:0;padding-left:18px}
     (D.ordrePrestations || []).forEach(function (c, i) { rang[c] = i; });
     return D.prestations.slice().sort(function (a, b) { return (a.code in rang ? rang[a.code] : 1e6) - (b.code in rang ? rang[b.code] : 1e6); });
   }
-  function listeRef() { return D[{ client: 'clients', prestation: 'prestations', chauffeur: 'chauffeurs', phyto: 'catalogue' }[onglet]]; }
+  function listeRef() { return D[{ client: 'clients', prestation: 'prestations', chauffeur: 'chauffeurs', bureau: 'bureau', phyto: 'catalogue' }[onglet]] || []; }
   function dessinerReferentiel() {
     var conf = FICHES[onglet], f = $('filtre-ref').value.trim().toLowerCase(), inact = $('voir-inactifs').checked;
     $('ajouter').textContent = onglet === 'prestation' ? '+ Ajouter une prestation' : '+ Ajouter un ' + conf.un;
@@ -1174,7 +1187,7 @@ table.voir ul{margin:0;padding-left:18px}
         if (c[0] === 'actif' || c[0] === 'phyto') return '<td>' + (v ? 'oui' : 'non') + '</td>';
         if (c[0] === 'code') return '<td class="num">' + esc(v) + '</td>';
         if (c[0] === 'lien') {
-          var sms = x.telephone ? 'sms:' + encodeURIComponent(x.telephone.replace(/\s/g, '')) + '?body=' + encodeURIComponent('Ton lien pour les bons de travail ETA : ' + v) : '';
+          var sms = x.telephone ? 'sms:' + encodeURIComponent(x.telephone.replace(/\s/g, '')) + '?body=' + encodeURIComponent((onglet === 'bureau' ? 'Ton lien personnel pour le planning ETA (ne le transmets pas) : ' : 'Ton lien pour les bons de travail ETA : ') + v) : '';
           return '<td>' + (v ? '<div class="lien-ch">' + esc(v) + '</div><div class="actions-ch"><button type="button" class="petit" data-copier-lien="' + esc(v) + '">Copier</button>'
             + (sms ? '<a class="petit" href="' + esc(sms) + '">Envoyer par SMS</a>' : '')
             + '<button type="button" class="petit" data-renouveler="' + esc(x.code) + '">Nouveau lien</button></div>' : '') + '</td>';
@@ -1193,7 +1206,7 @@ table.voir ul{margin:0;padding-left:18px}
       var code = t.getAttribute('data-renouveler');
       if (!confirm('Créer un nouveau lien pour ' + code + ' ? L\'ancien cessera de fonctionner : il faudra lui envoyer le nouveau.')) return;
       occupe++;
-      appel('gestionRenouvelerLien', { code: code })
+      appel('gestionRenouvelerLien', { code: code, type: onglet === 'bureau' ? 'bureau' : 'chauffeur' })
         .then(function () { occupe--; toast('Nouveau lien créé pour ' + code); return charger(true); })
         .catch(function (err) { occupe--; toast(err.message, true); });
       return;
@@ -1204,9 +1217,10 @@ table.voir ul{margin:0;padding-left:18px}
 
   function ouvrirFiche(x) {
     var conf = FICHES[onglet];
-    ficheOuverte = { type: onglet, nouveau: !x };
+    ficheOuverte = { type: onglet, nouveau: !x, version: x ? x.version || '' : '' };
     $('f-titre').textContent = x ? (x.nom || x.libelle) : (onglet === 'prestation' ? 'Nouvelle prestation' : 'Nouveau ' + conf.un);
     $('f-sous').textContent = x ? 'Le code ne peut pas être modifié. Pour ne plus proposer cette fiche, décochez « actif » : l\'historique est conservé.'
+      : onglet === 'bureau' ? 'Le lien personnel est créé à l\'enregistrement : envoyez-le à la personne (SMS ou copier). Il ouvre le planning, et la Gestion depuis le planning.'
       : onglet === 'phyto' ? 'Le code est le n° AMM du produit (7 chiffres, site e-phy de l\'Anses). Les produits sont aussi ajoutés automatiquement depuis les bons et les missions.'
       : 'Utilisez le même code que dans EBP.';
     $('f-champs').innerHTML = conf.champs.map(function (c) {
@@ -1240,10 +1254,15 @@ table.voir ul{margin:0;padding-left:18px}
       var c = conf.champs[k];
       if ((c.requis || c.code) && !fiche[c.cle]) { $('f-erreur').textContent = c.nom + ' : obligatoire.'; $('f-erreur').hidden = false; return; }
     }
+    if (ficheOuverte.version) fiche.version = ficheOuverte.version;
     $('f-enregistrer').disabled = true; occupe++;
     appel('gestionEnregistrerFiche', { type: ficheOuverte.type, fiche: fiche, nouveau: ficheOuverte.nouveau })
       .then(function (r) { occupe--; $('dlg-fiche').close(); toast((ficheOuverte.nouveau ? 'Créé : ' : 'Enregistré : ') + r.code); return charger(true); })
-      .catch(function (err) { occupe--; $('f-enregistrer').disabled = false; $('f-erreur').textContent = err.message; $('f-erreur').hidden = false; });
+      .catch(function (err) {
+        occupe--; $('f-enregistrer').disabled = false;
+        if (/entre-temps/.test(err.message)) { $('dlg-fiche').close(); toast(err.message); return charger(true); } // modifiée sur un autre poste
+        $('f-erreur').textContent = err.message; $('f-erreur').hidden = false;
+      });
   });
 
   $('actualiser').onclick = function () { charger(true); };
