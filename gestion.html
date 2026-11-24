@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – gestion.html – Version 0.29 – 2026-11-17 (rapidité : affichage immédiat des dernières données, bons mis à jour sans tout recharger) ; 0.28 (onglet Bureau, auteur des corrections) ; 0.27 (travail à plusieurs) ; 0.26 – 2026-11-17 (pesées des rotations saisies au bureau, bons non pesés non facturables) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.21 – 2026-11-13 (épandage de boues) -->
+<!-- ETA Oillic – gestion.html – Version 0.30 – 2026-11-24 (bon de rotations facturable sans pesées : BL fait d'après les tickets) ; 0.29 – 2026-11-17 (rapidité : affichage immédiat des dernières données, bons mis à jour sans tout recharger) ; 0.28 (onglet Bureau, auteur des corrections) ; 0.27 (travail à plusieurs) ; 0.26 – 2026-11-17 (pesées des rotations saisies au bureau, bons non pesés non facturables) ; 0.23 – 2026-11-16 (rotations, client par défaut) ; 0.21 – 2026-11-13 (épandage de boues) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -171,7 +171,7 @@ table.voir td small{color:var(--doux)}
 table.voir ul{margin:0;padding-left:18px}
 .voir-detail{white-space:pre-line}
 .vide-lien{max-width:540px;margin:60px auto;background:var(--surface);border-radius:12px;padding:24px}
-.a-peser{color:var(--rouge,#A8231B)}
+.a-peser{color:#B35C00}
 </style>
 </head>
 <body>
@@ -453,7 +453,7 @@ table.voir ul{margin:0;padding-left:18px}
   function nb(n) { return Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 }); }
   function nombre(s) { s = String(s).replace(/\s/g, '').replace(',', '.'); var v = Number(s); return s !== '' && isFinite(v) ? v : NaN; }
   /** Quantité : « 2 h 30 » pour une unité en heures, sinon « 12,5 ha ». */
-  function qte(q, unite) { if (q === '' || q == null) return '<b class="a-peser">pesées à saisir</b>'; return LignesOptions.enHeures(unite) ? '<b>' + esc(LignesOptions.hm(q)) + '</b>' : '<b>' + nb(q) + '</b> ' + esc(unite); }
+  function qte(q, unite) { if (q === '' || q == null) return '<b class="a-peser" title="Quantité non saisie : le BL se fait d\'après les tickets de pesée">non pesé</b>'; return LignesOptions.enHeures(unite) ? '<b>' + esc(LignesOptions.hm(q)) + '</b>' : '<b>' + nb(q) + '</b> ' + esc(unite); }
   function heures(h) { return h === '' || h == null ? '' : esc(LignesOptions.hm(h)); }
   function resume(l) { return l.map(function (x) { return esc(x.libelle) + ' ' + qte(x.quantite, x.unite); }).join('<br>'); }
 
@@ -554,17 +554,23 @@ table.voir ul{margin:0;padding-left:18px}
     $('liste-clients').innerHTML = liste.map(function (c) { return blocClient(c, parClient[c].sort(function (a, b) { return a.date.localeCompare(b.date) || a.numero.localeCompare(b.numero); })); }).join('');
   }
 
-  /** Bon de rotations dont les pesées ne sont pas encore saisies : ni compté ni facturable (v0.26). */
+  /**
+   * Bon de rotations dont les pesées ne sont pas saisies (v0.26). Depuis la v0.30 il reste facturable : la secrétaire
+   * fait le BL dans EBP d'après les tickets de pesée ramenés par le chauffeur ; sa quantité vide n'entre pas dans les
+   * totaux, l'article est signalé « selon tickets ».
+   */
   function aPeser(b) { return Number(b.nombreRotations) > 0 && !(b.rotations || []).length; }
-  function exclu(b) { return !!decoches[b.numero] || aPeser(b); }
+  function sansPesees(t) { return String(t || '').replace('pesées à saisir', 'pesées non saisies'); }
+  function exclu(b) { return !!decoches[b.numero]; }
   function totaux(bons) {
     var t = {}, ordre = [];
     bons.forEach(function (b) {
       if (exclu(b)) return;
       b.lignes.forEach(function (l) {
         var k = l.code + '|' + l.unite;
-        if (!t[k]) { t[k] = { code: l.code, libelle: l.libelle, unite: l.unite, quantite: 0 }; ordre.push(k); }
-        t[k].quantite = Math.round((t[k].quantite + l.quantite) * 1000) / 1000;
+        if (!t[k]) { t[k] = { code: l.code, libelle: l.libelle, unite: l.unite, quantite: 0, tickets: 0 }; ordre.push(k); }
+        if (l.quantite === '' || l.quantite == null) { t[k].tickets++; return; } // pas de pesées : selon les tickets
+        t[k].quantite = Math.round((t[k].quantite + Number(l.quantite)) * 1000) / 1000;
       });
     });
     return ordre.map(function (k) { return t[k]; }).sort(function (a, b) { return a.libelle.localeCompare(b.libelle, 'fr'); });
@@ -581,16 +587,18 @@ table.voir ul{margin:0;padding-left:18px}
       + '<div class="corps"><div class="totaux"><h3>À saisir dans EBP' + (coches.length < bons.length ? ' (' + coches.length + ' bon' + (coches.length > 1 ? 's' : '') + ' cochés)' : '') + '</h3>'
       + (tot.length ? '<table>' + tot.map(function (x) {
           return '<tr><td><span class="art">' + esc(x.code) + '</span><br>' + esc(x.libelle) + '</td>'
-            + '<td class="qte"><button type="button" data-copier="' + esc(nb(x.quantite)) + '" title="Cliquer pour copier">' + esc(nb(x.quantite)) + '</button>'
-            + (LignesOptions.enHeures(x.unite) ? '<br><small style="font-size:13px;font-weight:400">' + esc(LignesOptions.hm(x.quantite)) + '</small>' : '') + '</td>'
+            + '<td class="qte">' + (x.quantite || !x.tickets ? '<button type="button" data-copier="' + esc(nb(x.quantite)) + '" title="Cliquer pour copier">' + esc(nb(x.quantite)) + '</button>'
+            + (LignesOptions.enHeures(x.unite) ? '<br><small style="font-size:13px;font-weight:400">' + esc(LignesOptions.hm(x.quantite)) + '</small>' : '') : '')
+            + (x.tickets ? (x.quantite ? '<br>' : '') + '<small class="a-peser" style="font-size:13px">' + (x.quantite ? '+ ' : '') + 'selon tickets ('
+              + x.tickets + ' bon' + (x.tickets > 1 ? 's' : '') + ' non pesé' + (x.tickets > 1 ? 's' : '') + ')</small>' : '') + '</td>'
             + '<td class="u">' + esc(x.unite) + '</td></tr>';
         }).join('') + '</table>' : '<p>Aucun bon coché.</p>')
       + '</div><div class="bons"><h3>Détail des bons</h3><table class="liste"><thead><tr><th><input type="checkbox" data-tout="' + esc(code) + '"'
       + (coches.length === bons.length ? ' checked' : '') + ' aria-label="Tout cocher"></th><th>N° bon</th><th>Date</th><th>Chauffeur</th><th>Lieu / parcelle</th><th>Prestations</th><th class="nb">Heures</th><th>Remarques</th><th></th></tr></thead><tbody>'
       + bons.map(function (b) {
-          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : '', Precisions.resume(b.plages, b.preneurs, bouesBon(b), { volumes: b.rotations, nombre: b.nombreRotations })].filter(Boolean).join(', ');
+          var lieu = [b.lieu, b.parcelle ? 'parcelle ' + b.parcelle : '', sansPesees(Precisions.resume(b.plages, b.preneurs, bouesBon(b), { volumes: b.rotations, nombre: b.nombreRotations }))].filter(Boolean).join(', ');
           var intr = b.intrants.length ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
-          return '<tr' + (exclu(b) ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (exclu(b) ? '' : ' checked') + (aPeser(b) ? ' disabled title="Pesées à saisir avant de facturer : Corriger"' : '') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
+          return '<tr' + (exclu(b) ? ' class="decoche"' : '') + '><td><input type="checkbox" data-bon="' + esc(b.numero) + '"' + (exclu(b) ? '' : ' checked') + (aPeser(b) ? ' title="Pesées non saisies : facturable, le BL se fait d\'après les tickets (pesées facultatives : Corriger)"' : '') + ' aria-label="Inclure ' + esc(b.numero) + '"></td>'
             + '<td class="num">' + esc(b.numero) + (b.corrections.length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '') + trombone(b) + '</td>'
             + '<td>' + court(b.date) + '</td><td>' + esc(b.chauffeurNom) + '</td><td>' + esc(lieu) + '</td>'
             + '<td>' + resume(b.lignes) + intr + '</td><td class="nb">' + heures(b.heures) + '</td>'
@@ -862,7 +870,8 @@ table.voir ul{margin:0;padding-left:18px}
       ['Épandage de boues', b.station || b.preneurBoues ? esc([b.station ? 'station ' + b.station : '', b.preneurBouesNom ? 'preneur ' + b.preneurBouesNom : '',
         b.volumeBoues !== '' && b.volumeBoues != null ? nb(b.volumeBoues) + ' m³ au total' : ''].filter(Boolean).join(', ')) : ''],
       ['Rotations', (b.rotations || []).length ? esc(Precisions.resume([], [], null, { volumes: b.rotations })) + '<br><small>' + b.rotations.map(function (x, i) { return 'n° ' + (i + 1) + ' : ' + nb(x) + ' t'; }).join(' · ') + '</small>'
-        : Number(b.nombreRotations) > 0 ? '<b class="a-peser">' + esc(Precisions.resume([], [], null, { nombre: b.nombreRotations })) + '</b>' : ''],
+        : Number(b.nombreRotations) > 0 ? '<b class="a-peser">' + esc(sansPesees(Precisions.resume([], [], null, { nombre: b.nombreRotations }))) + '</b>'
+          + '<br><small>Quantité d\'après les tickets de pesée (facultatif : Corriger pour saisir les pesées)</small>' : ''],
       ['Prestations', resume(b.lignes)],
       ['Intrants', b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join('<br>')],
       ['Traitement phyto', phytoDetail(b.phyto)],
@@ -1171,7 +1180,7 @@ table.voir ul{margin:0;padding-left:18px}
       + (nbF !== l.length ? ' (' + nbF + ' facturé' + (nbF > 1 ? 's' : '') + ', ' + (l.length - nbF) + ' annulé' + (l.length - nbF > 1 ? 's' : '') + ')' : '');
     $('histo').innerHTML = l.length ? l.map(function (b) {
       var intr = b.intrants.length && !b.phyto ? '<br><small>' + b.intrants.map(function (x) { return esc(x.produit) + ' ' + nb(x.dose) + ' ' + esc(x.unite); }).join(', ') + '</small>' : '';
-      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b), esc(Precisions.resume(b.plages, b.preneurs, bouesBon(b), { volumes: b.rotations, nombre: b.nombreRotations }))].filter(Boolean).join('<br>');
+      var lieu = [b.lieu ? esc(b.lieu) : '', parcellesTexte(b), esc(sansPesees(Precisions.resume(b.plages, b.preneurs, bouesBon(b), { volumes: b.rotations, nombre: b.nombreRotations })))].filter(Boolean).join('<br>');
       var annule = b.statut === 'Annulé', motif = annule ? motifAnnulation(b) : '';
       return '<tr><td class="num">' + esc(b.numero)
         + (b.corrections.filter(function (x) { return x.element !== 'Statut'; }).length ? '<span class="badge" title="Bon corrigé par le bureau">corrigé</span>' : '')

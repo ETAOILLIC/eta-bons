@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ETA Oillic – bureau.html – Version 0.28 – 2026-11-17 (liens personnels : nom de la personne connectée, auteur de la dernière modification d'une mission) ; 0.26 (saisie d'un bon : nombre de rotations) ; 0.23.1 (absences, glisser-déposer) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
+<!-- ETA Oillic – bureau.html – Version 0.30 – 2026-11-24 (bouton « Dupliquer » de la fiche mission) ; 0.28 – 2026-11-17 (liens personnels : nom de la personne connectée, auteur de la dernière modification d'une mission) ; 0.26 (saisie d'un bon : nombre de rotations) ; 0.23.1 (absences, glisser-déposer) ; 0.23 (rotations, client par défaut) ; 0.22 – 2026-11-15 (rapidité) -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -236,6 +236,7 @@ textarea{min-height:64px;resize:vertical}
   <form class="fiche" id="form-fiche" method="dialog" novalidate>
     <h3 id="f-titre">Nouvelle mission</h3>
     <p class="sous" id="f-sous"></p>
+    <button type="button" class="lien-btn" id="f-dupliquer" hidden style="margin:0 0 8px" title="Nouvelle mission reprenant celle-ci : il reste à choisir le jour">⧉ Dupliquer cette mission</button>
     <p class="info" id="f-info" hidden></p>
     <div class="champs">
       <label class="large">Client
@@ -724,11 +725,13 @@ textarea{min-height:64px;resize:vertical}
 
   function ouvrirFiche(m, defauts) {
     enCours = m || null;
-    var v = m || { client: '', prestation: '', lieu: '', consignes: '', aPartirDu: D.aujourdhui, auPlusTard: '',
+    var copie = !m && defauts && defauts.copie; // v0.30 : nouvelle mission reprenant une mission existante
+    var v = m || copie || { client: '', prestation: '', lieu: '', consignes: '', aPartirDu: D.aujourdhui, auPlusTard: '',
       datePrevue: (defauts && defauts.datePrevue) || '', chauffeur: (defauts && defauts.chauffeur) || '' };
     var fige = !!m && (m.statut === 'Faite' || m.statut === 'Annulée');
-    $('f-titre').textContent = m ? 'Mission ' + m.id : 'Nouvelle mission';
-    $('f-sous').textContent = m ? 'Statut : ' + m.statut + (m.datePrevue ? '' : ' (en attente)') + (m.modifieePar ? ' · dernière modification : ' + m.modifieePar : '') : 'Seuls le client et la prestation sont obligatoires.';
+    $('f-titre').textContent = m ? 'Mission ' + m.id : copie ? 'Nouvelle mission (copie de ' + copie.source + ')' : 'Nouvelle mission';
+    $('f-sous').textContent = m ? 'Statut : ' + m.statut + (m.datePrevue ? '' : ' (en attente)') + (m.modifieePar ? ' · dernière modification : ' + m.modifieePar : '')
+      : copie ? 'Choisissez le jour (ou laissez vide pour la mettre en attente), puis enregistrez.' : 'Seuls le client et la prestation sont obligatoires.';
     $('f-info').hidden = !fige;
     $('f-info').textContent = fige ? 'Bon ' + (m.numeroBon || '') + ' reçu : la mission ne peut plus être modifiée.' : '';
     $('f-client').innerHTML = options(D.clients, v.client, 'Choisir le client', function (c) { return c.nom + (c.commune ? ' (' + c.commune + ')' : ''); });
@@ -746,9 +749,10 @@ textarea{min-height:64px;resize:vertical}
     $('f-enregistrer').hidden = fige;
     $('f-annuler-mission').hidden = !m || fige;
     $('f-saisir-bon').hidden = !m || fige;
+    $('f-dupliquer').hidden = !m;
     $('f-erreur').hidden = true;
     $('fiche').showModal();
-    if (!fige) (m ? $('f-jour') : $('f-client')).focus();
+    if (!fige) (m || copie ? $('f-jour') : $('f-client')).focus();
   }
 
   function erreurFiche(t) { $('f-erreur').textContent = t; $('f-erreur').hidden = false; }
@@ -1078,6 +1082,22 @@ textarea{min-height:64px;resize:vertical}
       .catch(function (err) { (occupe--, finEnreg = Date.now()); $('b-enregistrer').disabled = false; erreurBon(err.message); });
   });
   $('f-saisir-bon').onclick = function () { var m = enCours; $('fiche').close(); ouvrirBon(m); };
+  /**
+   * Dupliquer (v0.30) : missions répétitives. Nouvelle mission avec le même client, la même prestation, le même lieu,
+   * les mêmes consignes, le même chauffeur et les mêmes précisions prévues (plages, preneurs, station, preneur des boues,
+   * rotations demandées). Ne sont pas repris : le jour (à choisir), les dates du client, la prescription phyto
+   * (propre à chaque chantier, à revalider) et l'équipe (chaque mission d'un chantier se duplique à part).
+   * Possible aussi depuis une mission faite ou annulée.
+   */
+  $('f-dupliquer').onclick = function () {
+    var m = enCours; if (!m) return;
+    var c = { source: m.id, client: m.client, prestation: m.prestation, lieu: m.lieu || '', consignes: m.consignes || '',
+      aPartirDu: D.aujourdhui, auPlusTard: '', datePrevue: '', chauffeur: m.chauffeur || '',
+      plages: m.plages, preneurs: m.preneurs, station: m.station, preneurBoues: m.preneurBoues, rotationsDemandees: m.rotationsDemandees };
+    $('fiche').close();
+    ouvrirFiche(null, { copie: c });
+    if ((m.equipe || []).length) toast('Seule la mission de ' + (m.chauffeur ? nomDe(m.chauffeur) : 'ce chauffeur') + ' est dupliquée : ajoutez l\'équipe si besoin.');
+  };
   $('nouveau-bon').onclick = function () { if (D) ouvrirBon(null); };
 
   // ------------------------------------------------------------ Journée d'un chauffeur (absence, note)
